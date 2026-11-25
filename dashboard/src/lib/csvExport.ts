@@ -16,7 +16,8 @@ export function exportTelemetryCsv(
     "setpoint_rpm",
     "actual_rpm",
     "error_rpm",
-    "pwm_0_255",
+    "pwm_signed",
+    "u_ff_pwm",
     "voltage_v",
     "current_a",
     "kp",
@@ -24,15 +25,23 @@ export function exportTelemetryCsv(
     "kd",
     "mode",
     "run_state",
+    "ff_enabled",
+    "vcomp_enabled",
+    "current_limited",
   ];
 
   const lines: string[] = [];
-
-  // Ringkasan metadata di baris komentar opsional?
-  // Gunakan format CSV bersih tanpa komentar agar langsung terbaca oleh Excel & MATLAB readtable().
   lines.push(headers.join(","));
 
   for (const s of samples) {
+    const runLabel =
+      s.runState === 1
+        ? "RUN"
+        : s.runState === 2
+          ? "ESTOP"
+          : s.runState === 3
+            ? "STALL"
+            : "STOP";
     lines.push(
       [
         s.timestampMs,
@@ -41,13 +50,17 @@ export function exportTelemetryCsv(
         s.rpm.toFixed(2),
         s.error.toFixed(2),
         s.pwm,
+        s.ffPwm.toFixed(1),
         s.voltage.toFixed(2),
         s.currentAmp.toFixed(2),
         s.kp.toFixed(3),
         s.ki.toFixed(3),
         s.kd.toFixed(3),
         s.mode === 1 ? "PID" : "OPEN_LOOP",
-        s.runState === 1 ? "RUN" : s.runState === 2 ? "ESTOP" : "STOP",
+        runLabel,
+        s.flags.ffEnabled ? 1 : 0,
+        s.flags.vcompEnabled ? 1 : 0,
+        s.flags.currentLimited ? 1 : 0,
       ].join(",")
     );
   }
@@ -64,7 +77,7 @@ export function exportTelemetryCsv(
   ].join("");
 
   const suffix =
-    metrics?.hasStep && metrics.targetSetpoint > 0
+    metrics?.hasStep && Math.abs(metrics.targetSetpoint) > 0
       ? `_SP${Math.round(metrics.targetSetpoint)}`
       : "";
 

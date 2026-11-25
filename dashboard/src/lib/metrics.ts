@@ -56,7 +56,7 @@ export function computeStepMetrics(
       const prev = samples[i - 1];
 
       const spChanged = Math.abs(curr.setpoint - prev.setpoint) >= 5.0;
-      const justStarted = prev.runState !== 1 && curr.setpoint >= 5.0;
+      const justStarted = prev.runState !== 1 && Math.abs(curr.setpoint) >= 5.0;
       const switchedToPid =
         prev.mode !== 1 && Math.abs(curr.setpoint - curr.rpm) >= 5.0;
 
@@ -71,7 +71,7 @@ export function computeStepMetrics(
   if (stepIdx < 0) {
     for (let i = 0; i < len; i++) {
       const s = samples[i];
-      if (s.mode === 1 && s.runState === 1 && s.setpoint >= 5.0) {
+      if (s.mode === 1 && s.runState === 1 && Math.abs(s.setpoint) >= 5.0) {
         if (Math.abs(s.setpoint - s.rpm) >= 5.0) {
           stepIdx = i;
         }

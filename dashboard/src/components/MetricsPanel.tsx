@@ -7,12 +7,13 @@ interface MetricsPanelProps {
   metrics: StepMetrics;
 }
 
+/**
+ * Strip pengukuran respon step 1 baris bergaya osiloskop (Tektronix/Keysight),
+ * menyatu langsung di bawah grafik tanpa kartu berat atau teks teori berlebih.
+ */
 export const MetricsPanel = React.memo(function MetricsPanel({
   metrics,
 }: MetricsPanelProps) {
-  const fmtSec = (v: number | null) => (v !== null ? `${v.toFixed(2)} s` : "—");
-  const fmtPct = (v: number | null) => (v !== null ? `${v.toFixed(1)} %` : "—");
-
   const osColor =
     metrics.overshootPct === null
       ? "text-[var(--ink-muted)]"
@@ -21,15 +22,6 @@ export const MetricsPanel = React.memo(function MetricsPanel({
         : metrics.overshootPct > 5
           ? "text-[var(--accent-warn)]"
           : "text-[var(--accent-ok)]";
-
-  const osTag =
-    metrics.overshootPct === null
-      ? "Mp"
-      : metrics.overshootPct > 15
-        ? "HIGH"
-        : metrics.overshootPct > 5
-          ? "MOD"
-          : "OK";
 
   const essColor =
     metrics.steadyStateErrorPct === null
@@ -42,124 +34,67 @@ export const MetricsPanel = React.memo(function MetricsPanel({
 
   return (
     <section
-      aria-labelledby="metrics-panel-heading"
-      className="panel-isolated border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
+      aria-label="Metrik respon step"
+      className="panel-isolated flex shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-1.5 border-t border-[var(--border-hairline)] bg-[var(--bg-surface-alt)] px-4 py-2 text-xs"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hairline)] px-4 py-2.5">
-        <h2
-          id="metrics-panel-heading"
-          className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-primary)]"
-        >
-          STEP RESPONSE PERFORMANCE METRICS
-        </h2>
-        <div className="flex flex-wrap items-center gap-3 font-mono text-[0.6875rem] text-[var(--ink-secondary)]">
-          {metrics.hasStep ? (
-            <>
-              <span>
-                STEP: {metrics.initialRpm.toFixed(0)} → {metrics.targetSetpoint.toFixed(0)} RPM
-              </span>
-              <span aria-hidden="true" className="text-[var(--border-control)]">|</span>
-              <span>
-                IAE:{" "}
-                <strong className="font-semibold text-[var(--ink-primary)]">
-                  {metrics.iae !== null ? metrics.iae.toFixed(1) : "—"}
-                </strong>
-              </span>
-            </>
-          ) : (
-            <span>Ubah Setpoint atau klik &ldquo;Step Test&rdquo; untuk mengukur respon transien</span>
-          )}
-        </div>
+      <div className="flex items-center gap-2 font-mono text-[0.6875rem] text-[var(--ink-muted)]">
+        <span className="font-sans font-medium text-[var(--ink-secondary)]">
+          Respon Step
+        </span>
+        {metrics.hasStep ? (
+          <span className="tabular-nums text-[var(--ink-primary)]">
+            {metrics.initialRpm.toFixed(0)} → {metrics.targetSetpoint.toFixed(0)} RPM
+          </span>
+        ) : (
+          <span>—</span>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-[var(--border-hairline)] sm:grid-cols-4">
-        {/* Rise Time */}
-        <div className="bg-[var(--bg-surface)] p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
-              RISE TIME (Tr)
-            </span>
-            <span className="font-mono text-[0.6875rem] text-[var(--ink-muted)]">10–90%</span>
-          </div>
-          <div className="mt-1.5 font-mono text-xl font-semibold tabular-nums text-[var(--ink-primary)]">
-            {fmtSec(metrics.riseTimeSec)}
-          </div>
-          <div className="mt-1 font-mono text-[0.6875rem] text-[var(--ink-muted)]">
-            {metrics.peakTimeSec !== null
-              ? `Peak Tp = ${metrics.peakTimeSec.toFixed(2)} s`
-              : "Menunggu 90% target"}
-          </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-xs tabular-nums">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[0.6875rem] text-[var(--ink-muted)]">Tr</span>
+          <span className="font-semibold text-[var(--ink-primary)]">
+            {metrics.riseTimeSec !== null ? `${metrics.riseTimeSec.toFixed(2)}s` : "—"}
+          </span>
         </div>
 
-        {/* Maximum Overshoot */}
-        <div className="bg-[var(--bg-surface)] p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
-              OVERSHOOT (%OS)
-            </span>
-            <span
-              className={`font-mono text-[0.625rem] font-semibold uppercase ${osColor}`}
-            >
-              {osTag}
-            </span>
-          </div>
-          <div className={`mt-1.5 font-mono text-xl font-semibold tabular-nums ${osColor}`}>
-            {fmtPct(metrics.overshootPct)}
-          </div>
-          <div className="mt-1 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-muted)]">
-            {metrics.peakRpm !== null && metrics.hasStep
-              ? `Peak = ${metrics.peakRpm.toFixed(1)} RPM`
-              : "Target < 10%"}
-          </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[0.6875rem] text-[var(--ink-muted)]">%OS</span>
+          <span className={`font-semibold ${osColor}`}>
+            {metrics.overshootPct !== null ? `${metrics.overshootPct.toFixed(1)}%` : "—"}
+          </span>
         </div>
 
-        {/* Settling Time */}
-        <div className="bg-[var(--bg-surface)] p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
-              SETTLING TIME (Ts)
-            </span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[0.6875rem] text-[var(--ink-muted)]">Ts</span>
+          <span className="font-semibold text-[var(--ink-primary)]">
+            {metrics.settlingTimeSec !== null ? `${metrics.settlingTimeSec.toFixed(2)}s` : "—"}
+          </span>
+          {metrics.hasStep ? (
             <span
-              className={`border px-1 py-0.5 font-mono text-[0.625rem] font-semibold uppercase ${
-                !metrics.hasStep
-                  ? "border-transparent text-[var(--ink-muted)]"
-                  : metrics.isSettled
-                    ? "border-[var(--accent-ok-border)] bg-[var(--accent-ok-bg)] text-[var(--accent-ok)]"
-                    : "border-[var(--accent-warn-border)] bg-[var(--accent-warn-bg)] text-[var(--accent-warn)]"
+              className={`text-[0.625rem] font-medium ${
+                metrics.isSettled ? "text-[var(--accent-ok)]" : "text-[var(--accent-warn)]"
               }`}
             >
-              {metrics.hasStep ? (metrics.isSettled ? "SETTLED" : "TRANSIENT") : "±2%"}
+              {metrics.isSettled ? "Stabil" : "Transien"}
             </span>
-          </div>
-          <div className="mt-1.5 font-mono text-xl font-semibold tabular-nums text-[var(--ink-primary)]">
-            {fmtSec(metrics.settlingTimeSec)}
-          </div>
-          <div className="mt-1 font-mono text-[0.6875rem] text-[var(--ink-muted)]">
-            Pita toleransi ±2% SP
-          </div>
+          ) : null}
         </div>
 
-        {/* Steady-State Error */}
-        <div className="bg-[var(--bg-surface)] p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
-              STEADY-STATE ERR
-            </span>
-            <span className="font-mono text-[0.6875rem] text-[var(--ink-muted)]">Ess</span>
-          </div>
-          <div className={`mt-1.5 font-mono text-xl font-semibold tabular-nums ${essColor}`}>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[0.6875rem] text-[var(--ink-muted)]">Ess</span>
+          <span className={`font-semibold ${essColor}`}>
             {metrics.steadyStateErrorRpm !== null
               ? `${metrics.steadyStateErrorRpm >= 0 ? "+" : ""}${metrics.steadyStateErrorRpm.toFixed(2)}`
               : "—"}
-            {metrics.steadyStateErrorRpm !== null ? (
-              <span className="ml-1 text-xs font-normal text-[var(--ink-muted)]">RPM</span>
-            ) : null}
-          </div>
-          <div className="mt-1 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-muted)]">
-            {metrics.steadyStateErrorPct !== null
-              ? `Relatif = ${metrics.steadyStateErrorPct.toFixed(2)}%`
-              : "Rata-rata 1.0 s akhir"}
-          </div>
+          </span>
+        </div>
+
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[0.6875rem] text-[var(--ink-muted)]">IAE</span>
+          <span className="font-semibold text-[var(--ink-primary)]">
+            {metrics.iae !== null ? metrics.iae.toFixed(1) : "—"}
+          </span>
         </div>
       </div>
     </section>

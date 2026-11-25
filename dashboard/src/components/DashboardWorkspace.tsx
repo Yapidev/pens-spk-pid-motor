@@ -8,31 +8,53 @@ import React, {
   useRef,
   useState,
 } from "react";
+import {
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
+  GitCompareArrows,
+  Terminal,
+} from "lucide-react";
+import { AutoTunePanel } from "@/components/AutoTunePanel";
+import { ComparePanel } from "@/components/ComparePanel";
 import { ControlPanel } from "@/components/ControlPanel";
 import { LcdMirror } from "@/components/LcdMirror";
 import { MetricsPanel } from "@/components/MetricsPanel";
 import { SerialConsole } from "@/components/SerialConsole";
 import { StepResponseChart } from "@/components/StepResponseChart";
+import { TelemetryStrip } from "@/components/TelemetryStrip";
 import { TopBar } from "@/components/TopBar";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { computeStepMetrics, EMPTY_METRICS } from "@/lib/metrics";
 import { MotorPlantSimulator } from "@/lib/motorSimulator";
 import {
   encodeCommand,
+  encodeCurrentLimit,
+  encodeFeedforward,
   encodeManualPwm,
   encodeMode,
   encodePID,
   encodePpr,
+  encodeRampRate,
   encodeSetpoint,
+  encodeVoltageComp,
   parseSerialLine,
 } from "@/lib/protocol";
+import { computeAutoTunings, identifyFopdt } from "@/lib/systemId";
 import { toggleColorScheme } from "@/lib/theme";
 import type { SerialTransport } from "@/lib/webSerial";
 import type {
+  AdvancedControlConfig,
+  AutoTuneCandidate,
   ConnectionMode,
   ConnectionStatus,
   ControlMode,
-  DeviceInfo,
+  FopdtModel,
   PIDParams,
+  SavedRunSnapshot,
   SerialLogEntry,
   StepMetrics,
   TelemetrySample,
@@ -42,8 +64,12 @@ const MAX_PLOT_SAMPLES = 2400; // 120 detik @ 20 Hz
 const PLOT_COMPACT_THRESHOLD = MAX_PLOT_SAMPLES + 200;
 const MAX_RECORD_SAMPLES = 50000;
 const MAX_LOG_ENTRIES = 300;
-const HUD_FLUSH_INTERVAL_MS = 100; // ~10 Hz untuk KPI & LCD (hemat re-render)
-const METRICS_FLUSH_INTERVAL_MS = 250; // ~4 Hz untuk komputasi metrik step
+const HUD_FLUSH_INTERVAL_MS = 100;
+const METRICS_FLUSH_INTERVAL_MS = 250;
+const IDENTIFY_DURATION_MS = 3400;
+const GHOST_COLORS = ["#a855f7", "#14b8a6", "#eab308"] as const;
+
+type DockTab = "lcd" | "autotune" | "compare" | "serial";
 
 function formatClock(): string {
   const now = new Date();
@@ -56,22 +82,23 @@ function detectWebSerialSupport(): boolean {
 }
 
 export function DashboardWorkspace() {
-  // Hydration guard: cegah mismatch jika ekstensi browser memodifikasi atribut [disabled] sebelum hidrasi
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Connection state
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("simulator");
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
-  const [connectionLabel, setConnectionLabel] = useState("Belum terhubung");
   const [baudRate, setBaudRate] = useState(115200);
   const [wsUrl, setWsUrl] = useState("ws://localhost:8080");
   const [webSerialSupported, setWebSerialSupported] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
-  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
 
-  // Throttled HUD state (LCD, KPI, Metrics, Logger count, Serial Console logs)
+  // Bottom Hardware Dock state
+  const [dockOpen, setDockOpen] = useState(true);
+  const [dockTab, setDockTab] = useState<DockTab>("lcd");
+
+  // Throttled HUD state
   const [latestSample, setLatestSample] = useState<TelemetrySample | null>(null);
   const [metrics, setMetrics] = useState<StepMetrics>(EMPTY_METRICS);
   const [sampleRateHz, setSampleRateHz] = useState(0);
@@ -79,14 +106,35 @@ export function DashboardWorkspace() {
   const [recordedCount, setRecordedCount] = useState(0);
   const [logs, setLogs] = useState<SerialLogEntry[]>([]);
 
-  // Draft control inputs (Write -> MC)
-  const [draftPid, setDraftPid] = useState<PIDParams>({ kp: 1.2, ki: 0.85, kd: 0.05 });
-  const [draftSetpoint, setDraftSetpoint] = useState(150);
-  const [draftManualPwm, setDraftManualPwm] = useState(110);
+  // Draft control inputs (recalibrated for ~701 RPM lab motor)
+  const [draftPid, setDraftPid] = useState<PIDParams>({ kp: 0.55, ki: 1.35, kd: 0.015 });
+  const [draftSetpoint, setDraftSetpoint] = useState(350);
+  const [draftManualPwm, setDraftManualPwm] = useState(120);
   const [autoSendPid, setAutoSendPid] = useState(true);
-  const [pprValue, setPprValue] = useState(330);
+  const [pprValue, setPprValue] = useState(1320);
 
-  // High-frequency & event-synced refs (tanpa 8 useEffect mirror yang boros)
+  // 2-DOF Feedforward, Voltage Comp, Ramp & Current Safety
+  const [advancedConfig, setAdvancedConfig] = useState<AdvancedControlConfig>({
+    ffEnabled: false,
+    kff: 0.35,
+    deadzonePwm: 10,
+    vcompEnabled: true,
+    currentLimitAmp: 3.5,
+    rampRate: 0,
+  });
+
+  // Auto System Identification (FOPDT) & Auto-Tune state
+  const [isIdentifying, setIsIdentifying] = useState(false);
+  const [identifyProgressPct, setIdentifyProgressPct] = useState(0);
+  const [fopdtModel, setFopdtModel] = useState<FopdtModel | null>(null);
+  const [autoTuneCandidates, setAutoTuneCandidates] = useState<AutoTuneCandidate[]>([]);
+  const [showFopdtOverlay, setShowFopdtOverlay] = useState(true);
+
+  // A/B Experiment Overlay (Ghost Runs, max 3)
+  const [ghostRuns, setGhostRuns] = useState<SavedRunSnapshot[]>([]);
+  const runCounterRef = useRef(1);
+
+  // High-frequency refs
   const plotSamplesRef = useRef<TelemetrySample[]>([]);
   const telemetryVersionRef = useRef(0);
   const latestSampleRef = useRef<TelemetrySample | null>(null);
@@ -99,6 +147,9 @@ export function DashboardWorkspace() {
     kp: number;
     ki: number;
     kd: number;
+    ffEnabled: boolean;
+    vcompEnabled: boolean;
+    currentLimited: boolean;
   } | null>(null);
 
   const transportRef = useRef<SerialTransport | null>(null);
@@ -114,18 +165,21 @@ export function DashboardWorkspace() {
   const showTelemetryLogsRef = useRef(false);
   const pendingRxLogsRef = useRef<SerialLogEntry[]>([]);
 
-  // Tracked timers for clean cancellation
   const pidThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pwmThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stepTestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const identifyStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const identifyFinishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const identifyTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const connectionModeRef = useRef<ConnectionMode>("simulator");
   const connectionStatusRef = useRef<ConnectionStatus>("disconnected");
   const draftPidRef = useRef<PIDParams>(draftPid);
   const autoSendPidRef = useRef<boolean>(autoSendPid);
+  const advancedConfigRef = useRef<AdvancedControlConfig>(advancedConfig);
   const wsUrlRef = useRef<string>(wsUrl);
   const baudRateRef = useRef<number>(baudRate);
   const metricsRef = useRef<StepMetrics>(metrics);
@@ -193,6 +247,9 @@ export function DashboardWorkspace() {
         kp: sample.kp,
         ki: sample.ki,
         kd: sample.kd,
+        ffEnabled: sample.flags.ffEnabled,
+        vcompEnabled: sample.flags.vcompEnabled,
+        currentLimited: sample.flags.currentLimited,
       };
     }
 
@@ -213,8 +270,6 @@ export function DashboardWorkspace() {
       }
     };
 
-    // Tandai pembaruan telemetri periodik sebagai non-urgent (rerender-transitions)
-    // agar input slider/ketikan user tidak pernah tersendat
     if (urgent) {
       commit();
     } else {
@@ -222,7 +277,6 @@ export function DashboardWorkspace() {
     }
   }, []);
 
-  // Periodic HUD flush timer (~10 Hz) — menjaga responsivitas UI saat Canvas berjalan 60 FPS
   useEffect(() => {
     const id = setInterval(() => {
       if (hudDirtyRef.current || pendingRxLogsRef.current.length > 0) {
@@ -264,14 +318,14 @@ export function DashboardWorkspace() {
           lastRemoteSpRef.current = s.setpoint;
         } else if (
           lastRemoteSpRef.current !== null &&
-          Math.abs(s.setpoint - lastRemoteSpRef.current) >= 1 &&
+          Math.abs(s.setpoint - lastRemoteSpRef.current) >= 2 &&
+          !s.flags.rampEnabled &&
           now - lastLocalEditMsRef.current > 600
         ) {
           setDraftSetpoint(Math.round(s.setpoint));
         }
         lastRemoteSpRef.current = s.setpoint;
 
-        // O(1) amortized in-place append (tanpa cloning 2400 objek setiap 50ms)
         const buf = plotSamplesRef.current;
         buf.push(s);
         if (buf.length > PLOT_COMPACT_THRESHOLD) {
@@ -308,14 +362,19 @@ export function DashboardWorkspace() {
           Math.abs(prevSnap.setpoint - s.setpoint) >= 0.5 ||
           Math.abs(prevSnap.kp - s.kp) > 0.001 ||
           Math.abs(prevSnap.ki - s.ki) > 0.001 ||
-          Math.abs(prevSnap.kd - s.kd) > 0.001
+          Math.abs(prevSnap.kd - s.kd) > 0.001 ||
+          prevSnap.ffEnabled !== s.flags.ffEnabled ||
+          prevSnap.vcompEnabled !== s.flags.vcompEnabled ||
+          prevSnap.currentLimited !== s.flags.currentLimited
         ) {
           flushHudState(true);
         }
       } else if (parsed.type === "ack") {
         appendLog("RX", `ACK,${parsed.key},${parsed.value}`);
+        if (parsed.key === "FAULT" && parsed.value === "STALL") {
+          showNotice("STALL FAULT: Proteksi arus/rotor aktif");
+        }
       } else if (parsed.type === "info") {
-        setDeviceInfo(parsed.info);
         if (parsed.info.ppr !== null) {
           setPprValue(parsed.info.ppr);
         }
@@ -324,7 +383,7 @@ export function DashboardWorkspace() {
         appendLog("RX", parsed.raw);
       }
     },
-    [appendLog, flushHudState]
+    [appendLog, flushHudState, showNotice]
   );
 
   const sendRawCommand = useCallback(
@@ -342,7 +401,23 @@ export function DashboardWorkspace() {
     [appendLog]
   );
 
+  const clearIdentifyTimers = useCallback(() => {
+    if (identifyStartTimerRef.current) {
+      clearTimeout(identifyStartTimerRef.current);
+      identifyStartTimerRef.current = null;
+    }
+    if (identifyFinishTimerRef.current) {
+      clearTimeout(identifyFinishTimerRef.current);
+      identifyFinishTimerRef.current = null;
+    }
+    if (identifyTickRef.current) {
+      clearInterval(identifyTickRef.current);
+      identifyTickRef.current = null;
+    }
+  }, []);
+
   const clearPendingTimers = useCallback(() => {
+    clearIdentifyTimers();
     if (syncTimerRef.current) {
       clearTimeout(syncTimerRef.current);
       syncTimerRef.current = null;
@@ -363,11 +438,13 @@ export function DashboardWorkspace() {
       clearTimeout(pwmThrottleTimerRef.current);
       pwmThrottleTimerRef.current = null;
     }
-  }, []);
+  }, [clearIdentifyTimers]);
 
   const disconnectAll = useCallback(
     async (silent = false) => {
       clearPendingTimers();
+      setIsIdentifying(false);
+      setIdentifyProgressPct(0);
       if (simulatorRef.current) {
         simulatorRef.current.stop();
         simulatorRef.current = null;
@@ -376,19 +453,20 @@ export function DashboardWorkspace() {
         await transportRef.current.disconnect();
       }
       updateConnectionStatus("disconnected");
-      setConnectionLabel("Terputus");
       setSampleRateHz(0);
       rxTimestampsRef.current = [];
       if (!silent) {
         appendLog("SYS", "Koneksi ditutup.");
-        showNotice("Koneksi terputus.");
+        showNotice("Koneksi terputus");
       }
     },
     [appendLog, clearPendingTimers, showNotice, updateConnectionStatus]
   );
 
   const startSimulator = useCallback(async () => {
-    await disconnectAll(true);
+    if (simulatorRef.current || transportRef.current) {
+      await disconnectAll(true);
+    }
     setErrorMessage(null);
     sessionOriginMsRef.current = null;
     initialSyncedRef.current = false;
@@ -407,11 +485,7 @@ export function DashboardWorkspace() {
     connectionModeRef.current = "simulator";
     setConnectionMode("simulator");
     updateConnectionStatus("connected");
-    setConnectionLabel("Plant 24V Digital Twin @ 20 Hz");
-    appendLog(
-      "SYS",
-      "Digital Twin Simulator 24V aktif (PID 1.20 / 0.85 / 0.05, SP=150 RPM)."
-    );
+    appendLog("SYS", "Simulator 24V Lab 701 RPM aktif (SP=350, 2-DOF + TC3 20Hz).");
     sim.start(handleIncomingLine);
   }, [appendLog, disconnectAll, handleIncomingLine, updateConnectionStatus]);
 
@@ -438,7 +512,6 @@ export function DashboardWorkspace() {
     setMetrics(EMPTY_METRICS);
     setRecordedCount(0);
 
-    // Conditional module loading (bundle-conditional): load SerialTransport only when connecting hardware/WS
     if (!transportRef.current && typeof window !== "undefined") {
       const { SerialTransport: SerialTransportCtor } = await import("@/lib/webSerial");
       transportRef.current = new SerialTransportCtor();
@@ -451,7 +524,6 @@ export function DashboardWorkspace() {
       onLine: handleIncomingLine,
       onDisconnect: (reason?: string) => {
         updateConnectionStatus("disconnected");
-        setConnectionLabel(reason ?? "Terputus");
         setSampleRateHz(0);
         appendLog("SYS", reason ?? "Perangkat terputus.");
       },
@@ -469,9 +541,8 @@ export function DashboardWorkspace() {
           : await transport.connectWebSocket(wsUrlRef.current, callbacks);
 
       updateConnectionStatus("connected");
-      setConnectionLabel(label);
       appendLog("SYS", `Terhubung: ${label}`);
-      showNotice(`Terhubung ke ${label}`);
+      showNotice(`Terhubung (${label})`);
 
       syncTimerRef.current = setTimeout(() => {
         sendRawCommand(encodeCommand("SYNC"));
@@ -481,11 +552,9 @@ export function DashboardWorkspace() {
         err instanceof Error ? err.message : "Gagal membuka koneksi serial.";
       if (msg.toLowerCase().includes("no port selected")) {
         updateConnectionStatus("disconnected");
-        setConnectionLabel("Pemilihan port dibatalkan");
       } else {
         setErrorMessage(msg);
         updateConnectionStatus("error");
-        setConnectionLabel("Koneksi gagal");
         appendLog("SYS", `ERROR: ${msg}`);
       }
     }
@@ -499,7 +568,6 @@ export function DashboardWorkspace() {
     updateConnectionStatus,
   ]);
 
-  // Cek dukungan Web Serial & aktifkan Digital Twin Simulator saat halaman dibuka
   useEffect(() => {
     setIsHydrated(true);
     setWebSerialSupported(detectWebSerialSupport());
@@ -508,22 +576,25 @@ export function DashboardWorkspace() {
     return () => {
       clearPendingTimers();
       if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
-      if (simulatorRef.current) {
-        simulatorRef.current.stop();
-      }
-      if (transportRef.current) {
-        void transportRef.current.disconnect();
-      }
+      if (simulatorRef.current) simulatorRef.current.stop();
+      if (transportRef.current) void transportRef.current.disconnect();
     };
   }, [clearPendingTimers, startSimulator]);
 
-  // Pintasan keyboard Escape -> Emergency Stop instan
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && connectionStatusRef.current === "connected") {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (
+        document.querySelector(
+          '[data-radix-popper-content-wrapper], [role="listbox"], [role="dialog"]'
+        )
+      ) {
+        return;
+      }
+      if (connectionStatusRef.current === "connected") {
         e.preventDefault();
         sendRawCommand(encodeCommand("ESTOP"));
-        showNotice("EMERGENCY STOP diaktifkan (ESC).");
+        showNotice("E-STOP aktif (ESC)");
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -539,12 +610,6 @@ export function DashboardWorkspace() {
         setConnectionMode(nextMode);
         if (nextMode === "simulator") {
           void startSimulator();
-        } else {
-          setConnectionLabel(
-            nextMode === "serial"
-              ? "Klik 'Select COM Port' untuk menghubungkan Arduino"
-              : `Siap terhubung ke ${wsUrlRef.current}`
-          );
         }
       });
     },
@@ -566,8 +631,6 @@ export function DashboardWorkspace() {
     setAutoSendPid(enabled);
   }, []);
 
-  // --- Handlers Control Panel ---
-
   const handleChangeDraftPid = useCallback(
     (next: PIDParams, immediate = false) => {
       draftPidRef.current = next;
@@ -588,8 +651,35 @@ export function DashboardWorkspace() {
 
   const handleApplyPid = useCallback(() => {
     sendRawCommand(encodePID(draftPidRef.current));
-    showNotice("Parameter PID dikirim ke mikrokontroler.");
+    showNotice("PID terkirim");
   }, [sendRawCommand, showNotice]);
+
+  const handleUpdateAdvancedConfig = useCallback(
+    (patch: Partial<AdvancedControlConfig>) => {
+      const prev = advancedConfigRef.current;
+      const next = { ...prev, ...patch };
+      advancedConfigRef.current = next;
+      setAdvancedConfig(next);
+
+      if (
+        patch.ffEnabled !== undefined ||
+        patch.kff !== undefined ||
+        patch.deadzonePwm !== undefined
+      ) {
+        sendRawCommand(encodeFeedforward(next.ffEnabled, next.kff, next.deadzonePwm));
+      }
+      if (patch.vcompEnabled !== undefined) {
+        sendRawCommand(encodeVoltageComp(next.vcompEnabled));
+      }
+      if (patch.currentLimitAmp !== undefined) {
+        sendRawCommand(encodeCurrentLimit(next.currentLimitAmp));
+      }
+      if (patch.rampRate !== undefined) {
+        sendRawCommand(encodeRampRate(next.rampRate));
+      }
+    },
+    [sendRawCommand]
+  );
 
   const handleChangeSetpoint = useCallback(
     (sp: number) => {
@@ -607,6 +697,7 @@ export function DashboardWorkspace() {
     (targetSp: number) => {
       lastLocalEditMsRef.current = Date.now();
       setDraftSetpoint(targetSp);
+      setShowFopdtOverlay(false);
       plotSamplesRef.current = [];
       telemetryVersionRef.current++;
       sessionOriginMsRef.current = null;
@@ -617,10 +708,14 @@ export function DashboardWorkspace() {
       stepTestTimerRef.current = setTimeout(() => {
         sendRawCommand(encodeMode(1));
         sendRawCommand(encodePID(draftPidRef.current));
+        const adv = advancedConfigRef.current;
+        sendRawCommand(encodeFeedforward(adv.ffEnabled, adv.kff, adv.deadzonePwm));
+        sendRawCommand(encodeVoltageComp(adv.vcompEnabled));
+        sendRawCommand(encodeRampRate(adv.rampRate));
         sendRawCommand(encodeSetpoint(targetSp));
         sendRawCommand(encodeCommand("START"));
       }, 120);
-      showNotice(`Step Test dimulai menuju ${targetSp} RPM.`);
+      showNotice(`Step Test → ${targetSp} RPM`);
     },
     [sendRawCommand, showNotice]
   );
@@ -643,17 +738,12 @@ export function DashboardWorkspace() {
       if (mode === 0 && latestSampleRef.current) {
         setDraftManualPwm(latestSampleRef.current.pwm);
       }
-      showNotice(
-        mode === 1
-          ? "Mode berpindah ke Closed-Loop PID."
-          : "Mode berpindah ke Open-Loop PWM."
-      );
     },
-    [sendRawCommand, showNotice]
+    [sendRawCommand]
   );
 
   const handleCommand = useCallback(
-    (cmd: "START" | "STOP" | "ESTOP" | "RESET" | "SYNC") => {
+    (cmd: "START" | "STOP" | "ESTOP" | "RESET" | "SYNC" | "CLEARFAULT") => {
       sendRawCommand(encodeCommand(cmd));
       if (cmd === "RESET") {
         plotSamplesRef.current = [];
@@ -661,27 +751,234 @@ export function DashboardWorkspace() {
         sessionOriginMsRef.current = null;
         metricsRef.current = EMPTY_METRICS;
         setMetrics(EMPTY_METRICS);
-        showNotice("Buffer grafik & state PID direset.");
       } else if (cmd === "ESTOP") {
-        showNotice("EMERGENCY STOP diaktifkan.");
+        clearIdentifyTimers();
+        setIsIdentifying(false);
+        showNotice("E-STOP aktif");
+      } else if (cmd === "CLEARFAULT") {
+        showNotice("Status fault dibersihkan");
       }
     },
-    [sendRawCommand, showNotice]
+    [clearIdentifyTimers, sendRawCommand, showNotice]
   );
+
+  const handleEstop = useCallback(() => {
+    handleCommand("ESTOP");
+  }, [handleCommand]);
 
   const handleApplyPpr = useCallback(
     (ppr: number) => {
       setPprValue(ppr);
       sendRawCommand(encodePpr(ppr));
-      showNotice(`Kalibrasi encoder PPR diset ke ${ppr}.`);
+      showNotice(`PPR = ${ppr}`);
     },
     [sendRawCommand, showNotice]
   );
 
+  // --- Auto System Identification (FOPDT) ---
+  const handleCancelIdentify = useCallback(() => {
+    clearIdentifyTimers();
+    setIsIdentifying(false);
+    setIdentifyProgressPct(0);
+    sendRawCommand(encodeCommand("STOP"));
+    showNotice("Identifikasi FOPDT dibatalkan");
+  }, [clearIdentifyTimers, sendRawCommand, showNotice]);
+
+  const handleStartIdentify = useCallback(
+    (stepPwm: number) => {
+      clearIdentifyTimers();
+      setIsIdentifying(true);
+      setIdentifyProgressPct(5);
+      setFopdtModel(null);
+      setAutoTuneCandidates([]);
+      setShowFopdtOverlay(false);
+
+      plotSamplesRef.current = [];
+      telemetryVersionRef.current++;
+      sessionOriginMsRef.current = null;
+      metricsRef.current = EMPTY_METRICS;
+      setMetrics(EMPTY_METRICS);
+
+      sendRawCommand(encodeCommand("RESET"));
+      appendLog("SYS", `Auto-ID FOPDT dimulai (Open-Loop Step PWM=${stepPwm}, 3.4s)...`);
+
+      identifyStartTimerRef.current = setTimeout(() => {
+        const startWallMs = Date.now();
+        sendRawCommand(encodeMode(0));
+        sendRawCommand(encodeManualPwm(stepPwm));
+        sendRawCommand(encodeCommand("START"));
+
+        const stepStartSec =
+          plotSamplesRef.current.length > 0
+            ? plotSamplesRef.current[plotSamplesRef.current.length - 1].elapsedSec
+            : 0;
+
+        identifyTickRef.current = setInterval(() => {
+          const pct = Math.min(
+            98,
+            Math.round(((Date.now() - startWallMs) / IDENTIFY_DURATION_MS) * 100)
+          );
+          setIdentifyProgressPct(pct);
+        }, 120);
+
+        identifyFinishTimerRef.current = setTimeout(() => {
+          clearIdentifyTimers();
+          sendRawCommand(encodeCommand("STOP"));
+          setIsIdentifying(false);
+          setIdentifyProgressPct(100);
+
+          const identified = identifyFopdt(
+            plotSamplesRef.current,
+            stepStartSec,
+            stepPwm
+          );
+          if (identified) {
+            const tunings = computeAutoTunings(identified);
+            setFopdtModel(identified);
+            setAutoTuneCandidates(tunings);
+            setShowFopdtOverlay(true);
+            appendLog(
+              "SYS",
+              `FOPDT selesai: K=${identified.gainK.toFixed(2)}, tau=${identified.tauSec.toFixed(2)}s, theta=${identified.thetaSec.toFixed(2)}s (R2=${(identified.rSquared * 100).toFixed(1)}%)`
+            );
+            showNotice(
+              `FOPDT selesai (K=${identified.gainK.toFixed(2)}, τ=${identified.tauSec.toFixed(2)}s)`
+            );
+          } else {
+            appendLog("SYS", "FOPDT gagal: respon motor tidak cukup besar atau terpotong.");
+            showNotice("Identifikasi gagal — cek koneksi & motor");
+          }
+        }, IDENTIFY_DURATION_MS);
+      }, 220);
+    },
+    [appendLog, clearIdentifyTimers, sendRawCommand, showNotice]
+  );
+
+  const handleApplyAutoTune = useCallback(
+    (candidate: AutoTuneCandidate, withFeedforward: boolean) => {
+      // Pada 2-DOF (Feedforward aktif), kontribusi steady-state sudah ditanggung u_ff,
+      // sehingga Ki direlaksasi (0.35x) agar Rise Time cepat tanpa overshoot berlebih.
+      const nextPid = {
+        kp: candidate.kp,
+        ki: withFeedforward
+          ? Math.round(candidate.ki * 0.35 * 1000) / 1000
+          : candidate.ki,
+        kd: candidate.kd,
+      };
+      draftPidRef.current = nextPid;
+      setDraftPid(nextPid);
+      sendRawCommand(encodeMode(1));
+      sendRawCommand(encodePID(nextPid));
+
+      const nextAdv: AdvancedControlConfig = {
+        ...advancedConfigRef.current,
+        ffEnabled: withFeedforward,
+        kff: withFeedforward ? candidate.recommendedKff : advancedConfigRef.current.kff,
+        deadzonePwm: withFeedforward
+          ? candidate.recommendedDeadzone
+          : advancedConfigRef.current.deadzonePwm,
+      };
+      advancedConfigRef.current = nextAdv;
+      setAdvancedConfig(nextAdv);
+      sendRawCommand(
+        encodeFeedforward(nextAdv.ffEnabled, nextAdv.kff, nextAdv.deadzonePwm)
+      );
+      setShowFopdtOverlay(false);
+
+      showNotice(
+        withFeedforward
+          ? `${candidate.name} + 2-DOF FF diterapkan`
+          : `${candidate.name} diterapkan`
+      );
+    },
+    [sendRawCommand, showNotice]
+  );
+
+  // --- A/B Ghost Run Pinning ---
+  const handlePinRun = useCallback(() => {
+    const m = metricsRef.current;
+    const samples = plotSamplesRef.current;
+    if (!m.hasStep || m.stepStartTimeSec === null || samples.length < 5) {
+      showNotice("Jalankan Step Test dulu sebelum Pin");
+      return;
+    }
+
+    const t0 = m.stepStartTimeSec;
+    const pts: { relSec: number; rpm: number; sp: number }[] = [];
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      if (s.elapsedSec < t0) continue;
+      const relSec = s.elapsedSec - t0;
+      if (relSec > 15) break;
+      pts.push({ relSec, rpm: s.rpm, sp: s.setpoint });
+    }
+    if (pts.length < 3) return;
+
+    const latest = latestSampleRef.current;
+    const runNum = runCounterRef.current++;
+    const color = GHOST_COLORS[(runNum - 1) % GHOST_COLORS.length];
+    const ffOn = latest?.flags.ffEnabled ?? advancedConfigRef.current.ffEnabled;
+    const vcOn = latest?.flags.vcompEnabled ?? advancedConfigRef.current.vcompEnabled;
+    const snap: SavedRunSnapshot = {
+      id: `run-${runNum}`,
+      label: `Run #${runNum}${ffOn ? " · 2-DOF" : " · 1-DOF"}`,
+      color,
+      visible: true,
+      pid: {
+        kp: latest?.kp ?? draftPidRef.current.kp,
+        ki: latest?.ki ?? draftPidRef.current.ki,
+        kd: latest?.kd ?? draftPidRef.current.kd,
+      },
+      ffEnabled: ffOn,
+      vcompEnabled: vcOn,
+      rampRate: advancedConfigRef.current.rampRate,
+      targetSetpoint: m.targetSetpoint,
+      initialRpm: m.initialRpm,
+      metrics: { ...m },
+      points: pts,
+    };
+
+    setGhostRuns((prev) => {
+      const next = [...prev, snap];
+      return next.length > 3 ? next.slice(next.length - 3) : next;
+    });
+    showNotice(`Tersimpan di Bandingkan (${snap.label})`);
+  }, [showNotice]);
+
+  const handleToggleRunVisible = useCallback((id: string, visible: boolean) => {
+    setGhostRuns((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, visible } : r))
+    );
+  }, []);
+
+  const handleRemoveRun = useCallback((id: string) => {
+    setGhostRuns((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  const handleClearRuns = useCallback(() => {
+    setGhostRuns([]);
+    showNotice("Overlay A/B dibersihkan");
+  }, [showNotice]);
+
+  // --- Simulator Stress Tests ---
   const handleInjectDisturbance = useCallback(() => {
     if (simulatorRef.current) {
-      simulatorRef.current.injectLoadDisturbance(50);
-      showNotice("Gangguan beban mekanis (+torsi 2.5s) disuntikkan.");
+      simulatorRef.current.injectLoadDisturbance(140);
+      showNotice("Gangguan torsi 2.5s");
+    }
+  }, [showNotice]);
+
+  const handleInjectVoltageSag = useCallback(() => {
+    if (simulatorRef.current) {
+      simulatorRef.current.injectVoltageSag(3.0);
+      showNotice("Simulasi PSU drop -3.0V (3s)");
+    }
+  }, [showNotice]);
+
+  const handleInjectStallTest = useCallback(() => {
+    if (simulatorRef.current) {
+      simulatorRef.current.injectStallTest();
+      showNotice("Simulasi rotor terkunci (uji Stall Guard)");
     }
   }, [showNotice]);
 
@@ -695,21 +992,20 @@ export function DashboardWorkspace() {
   const handleClearRecording = useCallback(() => {
     recordedSamplesRef.current = [];
     setRecordedCount(0);
-    showNotice("Buffer rekaman CSV dikosongkan.");
+    showNotice("Rekaman dihapus");
   }, [showNotice]);
 
-  // Conditional module loading (bundle-conditional): load csvExport only on click
   const handleExportCsv = useCallback(() => {
     const samples = recordedSamplesRef.current;
     if (samples.length === 0 || typeof window === "undefined") return;
     void import("@/lib/csvExport").then(({ exportTelemetryCsv }) => {
       exportTelemetryCsv(samples, metricsRef.current);
-      showNotice(`CSV diekspor (${samples.length} sampel).`);
+      showNotice(`CSV diekspor (${samples.length})`);
     });
   }, [showNotice]);
 
   const handleExportPngSuccess = useCallback(() => {
-    showNotice("Grafik Step Response (.png) berhasil disimpan.");
+    showNotice("PNG tersimpan");
   }, [showNotice]);
 
   const handleConnectClick = useCallback(() => {
@@ -740,16 +1036,40 @@ export function DashboardWorkspace() {
     }
   }, []);
 
+  const handleSelectDockTab = useCallback((tab: DockTab) => {
+    setDockTab(tab);
+    setDockOpen(true);
+    if (tab !== "serial") {
+      showTelemetryLogsRef.current = false;
+      pendingRxLogsRef.current = [];
+    }
+  }, []);
+
+  const handleToggleDock = useCallback(() => {
+    setDockOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        showTelemetryLogsRef.current = false;
+        pendingRxLogsRef.current = [];
+      }
+      return next;
+    });
+  }, []);
+
   const handleToggleTheme = useCallback(() => {
     const { resolved, followingSystem } = toggleColorScheme();
     showNotice(
       followingSystem
-        ? `Mengikuti tema sistem (${resolved === "dark" ? "gelap" : "terang"}).`
+        ? `Tema sistem (${resolved === "dark" ? "gelap" : "terang"})`
         : resolved === "dark"
-          ? "Mode gelap diaktifkan."
-          : "Mode terang diaktifkan."
+          ? "Mode gelap"
+          : "Mode terang"
     );
   }, [showNotice]);
+
+  const handleToggleModelOverlay = useCallback(() => {
+    setShowFopdtOverlay((v) => !v);
+  }, []);
 
   const connected = connectionStatus === "connected";
   const activeMode: ControlMode = latestSample?.mode ?? 1;
@@ -766,17 +1086,16 @@ export function DashboardWorkspace() {
   const activeSetpoint = latestSample?.setpoint ?? draftSetpoint;
 
   return (
-    <>
+    <TooltipProvider delayDuration={300}>
       <TopBar
         hydrated={isHydrated}
         connectionMode={connectionMode}
         connectionStatus={connectionStatus}
-        connectionLabel={connectionLabel}
         baudRate={baudRate}
         wsUrl={wsUrl}
         webSerialSupported={webSerialSupported}
         sampleRateHz={sampleRateHz}
-        deviceInfo={deviceInfo}
+        runState={runState}
         isRecording={isRecording}
         recordedCount={recordedCount}
         errorMessage={errorMessage}
@@ -790,65 +1109,193 @@ export function DashboardWorkspace() {
         onClearRecording={handleClearRecording}
         onExportCsv={handleExportCsv}
         onToggleTheme={handleToggleTheme}
+        onEstop={handleEstop}
       />
 
+      {/* Full-Viewport Edge-to-Edge Split Workbench */}
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto flex w-full max-w-[1640px] flex-1 flex-col gap-4 px-4 py-4 outline-none lg:px-6"
+        className="flex min-h-0 flex-1 flex-col outline-none xl:flex-row"
       >
-        <LcdMirror latest={latestSample} />
+        {/* Left Main Pane: Telemetry Strip + Oscilloscope + Inline Metrics + Hardware Dock */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <TelemetryStrip latest={latestSample} />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-          <div className="flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
-            <StepResponseChart
-              samplesRef={plotSamplesRef}
-              telemetryVersionRef={telemetryVersionRef}
-              metrics={metrics}
-              onClearPlot={handleClearPlot}
-              onExportPngSuccess={handleExportPngSuccess}
-            />
-            <MetricsPanel metrics={metrics} />
-            <SerialConsole
-              hydrated={isHydrated}
-              logs={logs}
-              connected={connected}
-              onSendRaw={sendRawCommand}
-              onClearLogs={handleClearLogs}
-              onTelemetryVisibilityChange={handleTelemetryVisibilityChange}
-            />
-          </div>
+          <StepResponseChart
+            samplesRef={plotSamplesRef}
+            telemetryVersionRef={telemetryVersionRef}
+            metrics={metrics}
+            ghostRuns={ghostRuns}
+            fopdtModel={fopdtModel}
+            showFopdtOverlay={showFopdtOverlay}
+            onPinRun={handlePinRun}
+            onClearPlot={handleClearPlot}
+            onExportPngSuccess={handleExportPngSuccess}
+          />
 
-          <div className="xl:col-span-4 2xl:col-span-3">
-            <ControlPanel
-              hydrated={isHydrated}
-              connected={connected}
-              connectionMode={connectionMode}
-              activeMode={activeMode}
-              runState={runState}
-              activePid={activePid}
-              activeSetpoint={activeSetpoint}
-              draftPid={draftPid}
-              draftSetpoint={draftSetpoint}
-              draftManualPwm={draftManualPwm}
-              autoSendPid={autoSendPid}
-              pprValue={pprValue}
-              onChangeDraftPid={handleChangeDraftPid}
-              onApplyPid={handleApplyPid}
-              onToggleAutoSendPid={handleToggleAutoSendPid}
-              onChangeSetpoint={handleChangeSetpoint}
-              onTriggerStepTest={handleTriggerStepTest}
-              onChangeManualPwm={handleChangeManualPwm}
-              onSwitchMode={handleSwitchMode}
-              onCommand={handleCommand}
-              onApplyPpr={handleApplyPpr}
-              onInjectDisturbance={
-                connectionMode === "simulator" ? handleInjectDisturbance : undefined
-              }
-            />
-          </div>
+          <MetricsPanel metrics={metrics} />
+
+          {/* Bottom Hardware & Engineering Dock: LCD | Auto-Tune | Bandingkan | Serial */}
+          <section
+            aria-label="Panel perangkat keras, auto-tune, perbandingan, dan serial"
+            className="min-w-0 max-w-full shrink-0 border-t border-border bg-card"
+          >
+            <Tabs
+              value={dockTab}
+              onValueChange={(v) => handleSelectDockTab(v as DockTab)}
+              className="min-w-0 max-w-full gap-0"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-[var(--bg-surface-alt)] px-3">
+                <TabsList
+                  variant="line"
+                  aria-label="Tab panel bawah"
+                  className="h-8 min-w-0 max-w-full justify-start gap-1 overflow-x-auto p-0"
+                >
+                  <TabsTrigger
+                    value="lcd"
+                    onClick={() => handleSelectDockTab("lcd")}
+                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
+                  >
+                    <Cpu aria-hidden="true" className="size-3.5" />
+                    <span>LCD 16×2</span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="autotune"
+                    onClick={() => handleSelectDockTab("autotune")}
+                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
+                  >
+                    <Activity aria-hidden="true" className="size-3.5" />
+                    <span>Auto-Tune</span>
+                    {fopdtModel ? (
+                      <span className="font-mono text-[0.625rem] text-[var(--accent-ok)]">
+                        R² {(fopdtModel.rSquared * 100).toFixed(0)}%
+                      </span>
+                    ) : null}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="compare"
+                    onClick={() => handleSelectDockTab("compare")}
+                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
+                  >
+                    <GitCompareArrows aria-hidden="true" className="size-3.5" />
+                    <span>Bandingkan</span>
+                    {ghostRuns.length > 0 ? (
+                      <span className="font-mono text-[0.6875rem] tabular-nums opacity-75">
+                        {ghostRuns.length}
+                      </span>
+                    ) : null}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="serial"
+                    onClick={() => handleSelectDockTab("serial")}
+                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
+                  >
+                    <Terminal aria-hidden="true" className="size-3.5" />
+                    <span>Serial</span>
+                    <span className="font-mono text-[0.6875rem] tabular-nums opacity-75">
+                      {logs.length}
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-expanded={dockOpen}
+                  aria-label={dockOpen ? "Ciutkan panel bawah" : "Buka panel bawah"}
+                  onClick={handleToggleDock}
+                  className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  {dockOpen ? (
+                    <ChevronDown aria-hidden="true" className="size-4" />
+                  ) : (
+                    <ChevronUp aria-hidden="true" className="size-4" />
+                  )}
+                </Button>
+              </div>
+
+              <div hidden={!dockOpen}>
+                <TabsContent value="lcd" className="mt-0">
+                  <LcdMirror latest={latestSample} />
+                </TabsContent>
+                <TabsContent value="autotune" className="mt-0">
+                  <AutoTunePanel
+                    hydrated={isHydrated}
+                    connected={connected}
+                    isIdentifying={isIdentifying}
+                    identifyProgressPct={identifyProgressPct}
+                    model={fopdtModel}
+                    candidates={autoTuneCandidates}
+                    showModelOverlay={showFopdtOverlay}
+                    onStartIdentify={handleStartIdentify}
+                    onCancelIdentify={handleCancelIdentify}
+                    onToggleModelOverlay={handleToggleModelOverlay}
+                    onApplyCandidate={handleApplyAutoTune}
+                  />
+                </TabsContent>
+                <TabsContent value="compare" className="mt-0">
+                  <ComparePanel
+                    runs={ghostRuns}
+                    canPinCurrent={metrics.hasStep}
+                    onPinCurrent={handlePinRun}
+                    onToggleRunVisible={handleToggleRunVisible}
+                    onRemoveRun={handleRemoveRun}
+                    onClearAll={handleClearRuns}
+                  />
+                </TabsContent>
+                <TabsContent value="serial" className="mt-0">
+                  <SerialConsole
+                    hydrated={isHydrated}
+                    logs={logs}
+                    connected={connected}
+                    onSendRaw={sendRawCommand}
+                    onClearLogs={handleClearLogs}
+                    onTelemetryVisibilityChange={handleTelemetryVisibilityChange}
+                  />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </section>
         </div>
+
+        {/* Right Control Sidebar */}
+        <ControlPanel
+          hydrated={isHydrated}
+          connected={connected}
+          connectionMode={connectionMode}
+          activeMode={activeMode}
+          runState={runState}
+          activePid={activePid}
+          activeSetpoint={activeSetpoint}
+          draftPid={draftPid}
+          draftSetpoint={draftSetpoint}
+          draftManualPwm={draftManualPwm}
+          autoSendPid={autoSendPid}
+          pprValue={pprValue}
+          advancedConfig={advancedConfig}
+          onChangeDraftPid={handleChangeDraftPid}
+          onApplyPid={handleApplyPid}
+          onToggleAutoSendPid={handleToggleAutoSendPid}
+          onChangeSetpoint={handleChangeSetpoint}
+          onTriggerStepTest={handleTriggerStepTest}
+          onChangeManualPwm={handleChangeManualPwm}
+          onSwitchMode={handleSwitchMode}
+          onCommand={handleCommand}
+          onApplyPpr={handleApplyPpr}
+          onUpdateAdvancedConfig={handleUpdateAdvancedConfig}
+          onInjectDisturbance={
+            connectionMode === "simulator" ? handleInjectDisturbance : undefined
+          }
+          onInjectVoltageSag={
+            connectionMode === "simulator" ? handleInjectVoltageSag : undefined
+          }
+          onInjectStallTest={
+            connectionMode === "simulator" ? handleInjectStallTest : undefined
+          }
+        />
       </main>
-    </>
+    </TooltipProvider>
   );
 }

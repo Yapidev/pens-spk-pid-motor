@@ -2,36 +2,48 @@
 
 import React from "react";
 import {
-  Activity,
   AlertTriangle,
   CheckCircle2,
-  Cpu,
   Download,
   Moon,
-  Plug,
+  OctagonAlert,
   PlugZap,
-  Radio,
   Sun,
   Trash2,
   Unplug,
-  Wifi,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type {
   ConnectionMode,
   ConnectionStatus,
-  DeviceInfo,
+  RunState,
 } from "@/types/telemetry";
 
 interface TopBarProps {
   hydrated: boolean;
   connectionMode: ConnectionMode;
   connectionStatus: ConnectionStatus;
-  connectionLabel: string;
   baudRate: number;
   wsUrl: string;
   webSerialSupported: boolean;
   sampleRateHz: number;
-  deviceInfo: DeviceInfo | null;
+  runState: RunState;
   isRecording: boolean;
   recordedCount: number;
   errorMessage: string | null;
@@ -45,35 +57,19 @@ interface TopBarProps {
   onClearRecording: () => void;
   onExportCsv: () => void;
   onToggleTheme: () => void;
+  onEstop: () => void;
 }
 
 const BAUD_OPTIONS = [9600, 38400, 57600, 115200, 230400] as const;
 
-// Hoisted static JSX elements (rendering-hoist-jsx)
-const brandMark = (
-  <div
-    aria-hidden="true"
-    className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--btn-primary-bg)] font-mono text-xs font-bold tracking-wider text-[var(--btn-primary-ink)]"
-  >
-    SPK
-  </div>
-);
-
-const toolbarDivider = (
-  <div
-    aria-hidden="true"
-    className="hidden h-6 w-px bg-[var(--border-hairline)] sm:block"
-  />
-);
-
 const themeToggleIcons = (
   <>
-    <span className="theme-when-light items-center gap-1.5">
-      <Moon aria-hidden="true" className="h-3.5 w-3.5" />
+    <span className="theme-when-light items-center">
+      <Moon aria-hidden="true" className="size-3.5" />
       <span className="visually-hidden">Aktifkan mode gelap</span>
     </span>
-    <span className="theme-when-dark items-center gap-1.5">
-      <Sun aria-hidden="true" className="h-3.5 w-3.5" />
+    <span className="theme-when-dark items-center">
+      <Sun aria-hidden="true" className="size-3.5" />
       <span className="visually-hidden">Aktifkan mode terang</span>
     </span>
   </>
@@ -83,12 +79,11 @@ export const TopBar = React.memo(function TopBar({
   hydrated,
   connectionMode,
   connectionStatus,
-  connectionLabel,
   baudRate,
   wsUrl,
   webSerialSupported,
   sampleRateHz,
-  deviceInfo,
+  runState,
   isRecording,
   recordedCount,
   errorMessage,
@@ -102,293 +97,294 @@ export const TopBar = React.memo(function TopBar({
   onClearRecording,
   onExportCsv,
   onToggleTheme,
+  onEstop,
 }: TopBarProps) {
   const isConnected = connectionStatus === "connected";
   const isConnecting = connectionStatus === "connecting";
+  const isEstop = runState === 2;
+
+  const statusText = isConnected
+    ? `${connectionMode === "simulator" ? "Sim" : connectionMode === "serial" ? "USB" : "WS"} · ${sampleRateHz.toFixed(0)} Hz`
+    : isConnecting
+      ? "Menghubungkan..."
+      : "Terputus";
 
   return (
-    <header className="z-30 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] lg:sticky lg:top-0">
-      <div className="mx-auto flex max-w-[1640px] flex-wrap items-center justify-between gap-2.5 px-4 py-2.5 lg:px-6">
-        {/* Brand & Hardware Identity */}
-        <div className="flex items-center gap-3">
-          {brandMark}
-          <div className="leading-tight">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-sm font-semibold tracking-tight text-[var(--ink-primary)]">
-                DC MOTOR PID CONTROLLER
-              </h1>
-              <span className="hidden border border-[var(--border-hairline)] bg-[var(--bg-subtle)] px-1.5 py-0.5 font-mono text-[0.6875rem] font-medium text-[var(--ink-secondary)] sm:inline-block">
-                {deviceInfo
-                  ? `${deviceInfo.firmware} ${deviceInfo.version}`
-                  : "PENS · 24V PLANT"}
-              </span>
-            </div>
-            <p className="text-xs text-[var(--ink-muted)]">
-              Modul Sistem Pengaturan Komputer — Real-Time Telemetry &amp; R/W Tuning
-            </p>
-          </div>
-        </div>
-
-        {/* Center/Right Controls: Transport + Data Logger + Theme */}
+    <header className="z-30 shrink-0 border-b border-border bg-card">
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-3 py-1.5 lg:px-4">
+        {/* Left: Instrument Title + Connection Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Source Selector */}
-          <div
-            role="group"
-            aria-label="Sumber koneksi telemetri"
-            className="flex border border-[var(--border-control)] bg-[var(--bg-subtle)] p-0.5 text-xs font-medium"
-          >
-            <button
-              type="button"
-              aria-pressed={connectionMode === "serial"}
-              onClick={() => onChangeMode("serial")}
-              className={`flex min-h-8 items-center gap-1.5 px-2.5 py-1 transition-colors ${
-                connectionMode === "serial"
-                  ? "bg-[var(--bg-surface)] text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
-                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
-              }`}
-              title="Hubungkan langsung ke Arduino via Web Serial API (Chrome/Edge)"
+          <div className="flex items-center gap-2 pr-1">
+            <h1 className="text-[0.8125rem] font-semibold tracking-tight text-foreground">
+              SPK PID Motor
+            </h1>
+            <Badge
+              variant="outline"
+              className="gap-1.5 rounded-sm border-border bg-[var(--bg-surface-alt)] px-1.5 py-0.5 font-mono text-[0.6875rem] font-normal tabular-nums text-[var(--ink-secondary)]"
             >
-              <Plug aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span>Web Serial</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={connectionMode === "ws"}
-              onClick={() => onChangeMode("ws")}
-              className={`flex min-h-8 items-center gap-1.5 px-2.5 py-1 transition-colors ${
-                connectionMode === "ws"
-                  ? "bg-[var(--bg-surface)] text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
-                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
-              }`}
-              title="Hubungkan via Node.js Serial-to-WebSocket Bridge"
-            >
-              <Wifi aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span>WS Bridge</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={connectionMode === "simulator"}
-              onClick={() => onChangeMode("simulator")}
-              className={`flex min-h-8 items-center gap-1.5 px-2.5 py-1 transition-colors ${
-                connectionMode === "simulator"
-                  ? "bg-[var(--bg-surface)] text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
-                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
-              }`}
-              title="Uji lokal dengan Digital Twin Motor DC 24V"
-            >
-              <Cpu aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span>Simulator</span>
-            </button>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-1.5 rounded-full",
+                  isConnected
+                    ? connectionMode === "simulator"
+                      ? "bg-[var(--accent-sp-bright)]"
+                      : "bg-[var(--accent-ok)]"
+                    : connectionStatus === "error"
+                      ? "bg-[var(--accent-danger)]"
+                      : "bg-muted-foreground"
+                )}
+              />
+              {statusText}
+            </Badge>
           </div>
 
-          {/* Mode-Specific Parameter */}
-          {connectionMode === "serial" ? (
-            <select
-              aria-label="Baud Rate Serial"
-              disabled={isConnected || isConnecting}
-              value={baudRate}
-              onChange={(e) => onChangeBaudRate(Number(e.target.value))}
-              className="min-h-9 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2.5 py-1 font-mono text-xs text-[var(--ink-primary)] focus:border-[var(--border-strong)] disabled:opacity-50"
+          <Separator
+            orientation="vertical"
+            className="hidden h-4 sm:block"
+          />
+
+          {/* Compact Source Selector (shadcn Select) */}
+          <Select
+            value={connectionMode}
+            onValueChange={(v) => onChangeMode(v as ConnectionMode)}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label="Sumber koneksi"
+              className="h-8 rounded-sm border-input bg-card px-2.5 text-xs font-medium text-foreground shadow-none dark:bg-card"
             >
-              {BAUD_OPTIONS.map((b) => (
-                <option key={b} value={b}>
-                  {b} baud
-                </option>
-              ))}
-            </select>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="start">
+              <SelectItem value="simulator" className="text-xs">
+                Simulator 24V
+              </SelectItem>
+              <SelectItem value="serial" className="text-xs">
+                USB Serial
+              </SelectItem>
+              <SelectItem value="ws" className="text-xs">
+                WS Bridge
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          {connectionMode === "serial" ? (
+            <Select
+              value={String(baudRate)}
+              onValueChange={(v) => onChangeBaudRate(Number(v))}
+              disabled={hydrated && (isConnected || isConnecting)}
+            >
+              <SelectTrigger
+                size="sm"
+                aria-label="Baud rate serial"
+                className="h-8 rounded-sm border-input bg-card px-2 font-mono text-xs text-foreground shadow-none dark:bg-card"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" align="start">
+                {BAUD_OPTIONS.map((b) => (
+                  <SelectItem
+                    key={b}
+                    value={String(b)}
+                    className="font-mono text-xs"
+                  >
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : null}
 
           {connectionMode === "ws" ? (
-            <input
+            <Input
               type="url"
               aria-label="URL WebSocket Bridge"
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              disabled={isConnected || isConnecting}
+              disabled={hydrated && (isConnected || isConnecting)}
               value={wsUrl}
               onChange={(e) => onChangeWsUrl(e.target.value)}
               placeholder="ws://localhost:8080"
-              className="min-h-9 w-44 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2.5 py-1 font-mono text-xs text-[var(--ink-primary)] focus:border-[var(--border-strong)] disabled:opacity-50"
+              className="h-8 w-40 rounded-sm border-input bg-card px-2 font-mono text-xs text-foreground shadow-none dark:bg-card"
             />
           ) : null}
 
-          {/* Connect / Disconnect Action */}
           {isConnected ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={onDisconnect}
-              className="flex min-h-9 items-center gap-1.5 border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+              className="h-8 gap-1.5 rounded-sm border-input bg-card px-2.5 text-xs font-medium text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
             >
-              <Unplug aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span>Disconnect</span>
-            </button>
+              <Unplug aria-hidden="true" className="size-3.5" />
+              <span>Putus</span>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="sm"
               onClick={onConnect}
               disabled={
                 hydrated &&
-                (isConnecting || (connectionMode === "serial" && !webSerialSupported))
+                (isConnecting ||
+                  (connectionMode === "serial" && !webSerialSupported))
               }
-              className="flex min-h-9 items-center gap-1.5 bg-[var(--btn-primary-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--btn-primary-ink)] transition-colors hover:bg-[var(--btn-primary-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+              className="h-8 gap-1.5 rounded-sm px-2.5 text-xs font-medium shadow-none"
             >
-              <PlugZap aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              <PlugZap aria-hidden="true" className="size-3.5" />
               <span>
                 {isConnecting
-                  ? "Connecting..."
+                  ? "Menghubungkan..."
                   : connectionMode === "serial"
-                    ? "Select COM Port"
-                    : connectionMode === "ws"
-                      ? "Connect Bridge"
-                      : "Start Simulator"}
+                    ? "Pilih Port"
+                    : "Hubungkan"}
               </span>
-            </button>
+            </Button>
           )}
 
-          {/* Vertical Divider */}
-          {toolbarDivider}
-
-          {/* Data Logger: REC + Clear + CSV Export */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-pressed={isRecording}
-              onClick={onToggleRecording}
-              className={`flex min-h-9 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-xs font-semibold transition-colors ${
-                isRecording
-                  ? "border-[var(--accent-danger)] bg-[var(--accent-danger-bg)] text-[var(--accent-danger-ink)]"
-                  : "border-[var(--border-control)] bg-[var(--bg-surface)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
-              }`}
-              title="Mulai atau hentikan perekaman data telemetri untuk ekspor CSV"
-            >
-              <span
-                aria-hidden="true"
-                className={`h-2 w-2 rounded-full ${
-                  isRecording
-                    ? "bg-[var(--accent-danger)] motion-safe:animate-pulse"
-                    : "bg-[var(--ink-muted)]"
-                }`}
-              />
-              <span>{isRecording ? "REC" : "LOG"}</span>
-              <span className="tabular-nums text-[0.6875rem] opacity-90">
-                ({recordedCount})
-              </span>
-            </button>
-
-            {recordedCount > 0 ? (
-              <button
-                type="button"
-                onClick={onClearRecording}
-                aria-label="Hapus buffer rekaman CSV"
-                className="flex min-h-9 min-w-9 items-center justify-center border border-[var(--border-control)] bg-[var(--bg-surface)] text-[var(--ink-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
-                title="Hapus buffer rekaman CSV"
-              >
-                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={onExportCsv}
-              disabled={hydrated && recordedCount === 0}
-              className="flex min-h-9 items-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-semibold text-[var(--ink-primary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-              title="Unduh hasil pengujian dalam format .csv"
-            >
-              <Download aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              <span>Export .CSV</span>
-            </button>
-
-            {/* Two-State Dark Mode Toggle (CSS-driven icon & AT text, zero hydration flicker) */}
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              className="theme-toggle-btn flex min-h-9 min-w-9 items-center justify-center border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] hover:text-[var(--ink-primary)]"
-              title="Ganti tema terang / gelap"
-            >
-              {themeToggleIcons}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Sub-Bar: Connection Status, Live Action Notice & Error Banner */}
-      <div className="border-t border-[var(--border-hairline)] bg-[var(--bg-surface-alt)]">
-        <div className="mx-auto flex max-w-[1640px] flex-wrap items-center justify-between gap-2 px-4 py-1.5 text-xs lg:px-6">
-          <div className="flex flex-wrap items-center gap-2 font-mono text-[0.6875rem]">
+          {/* Contextual inline alert/notice — completely quiet when idle */}
+          {connectionMode === "serial" && !webSerialSupported ? (
             <span
-              aria-hidden="true"
-              className={`inline-flex h-2 w-2 rounded-full ${
-                isConnected
-                  ? connectionMode === "simulator"
-                    ? "bg-amber-500"
-                    : "bg-[var(--accent-ok)]"
-                  : connectionStatus === "error"
-                    ? "bg-[var(--accent-danger)]"
-                    : "bg-[var(--ink-muted)]"
-              }`}
-            />
-            <span className="font-semibold uppercase tracking-wider text-[var(--ink-primary)]">
-              {isConnected
-                ? connectionMode === "simulator"
-                  ? "DIGITAL TWIN SIMULATOR"
-                  : "HARDWARE CONNECTED"
-                : connectionStatus === "connecting"
-                  ? "CONNECTING"
-                  : "OFFLINE"}
+              role="status"
+              className="inline-flex items-center gap-1 text-xs text-[var(--accent-warn)]"
+            >
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              Gunakan Chrome/Edge atau WS Bridge
             </span>
-            <span aria-hidden="true" className="text-[var(--border-control)]">|</span>
-            <span className="text-[var(--ink-secondary)]">{connectionLabel}</span>
-            {isConnected ? (
-              <>
-                <span aria-hidden="true" className="text-[var(--border-control)]">|</span>
-                <span className="inline-flex items-center gap-1 tabular-nums text-[var(--ink-secondary)]">
-                  <Activity aria-hidden="true" className="h-3 w-3 text-[var(--accent-rpm)]" />
-                  {sampleRateHz.toFixed(1)} Hz
-                </span>
-              </>
-            ) : null}
-          </div>
+          ) : errorMessage ? (
+            <span
+              role="alert"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-danger-ink)]"
+            >
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              {errorMessage}
+            </span>
+          ) : statusNotice ? (
+            <span
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-1 text-xs text-[var(--accent-ok)]"
+            >
+              <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" />
+              {statusNotice}
+            </span>
+          ) : null}
+        </div>
 
-          <div className="flex items-center gap-3 text-[0.6875rem]">
-            {connectionMode === "serial" && !webSerialSupported ? (
-              <span
-                role="status"
-                className="inline-flex items-center gap-1 font-medium text-[var(--accent-warn)]"
+        {/* Right: Data Logger + Theme + Global E-STOP */}
+        <div className="flex items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-pressed={isRecording}
+                onClick={onToggleRecording}
+                className={cn(
+                  "h-8 gap-1.5 rounded-sm px-2 font-mono text-xs shadow-none",
+                  isRecording
+                    ? "border-[var(--accent-danger-border)] bg-[var(--accent-danger-bg)] font-medium text-[var(--accent-danger-ink)] hover:bg-[var(--accent-danger-bg)] hover:text-[var(--accent-danger-ink)] dark:border-[var(--accent-danger-border)] dark:bg-[var(--accent-danger-bg)]"
+                    : "border-input bg-card text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
+                )}
               >
-                <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                Web Serial API membutuhkan Chrome / Edge / Opera — gunakan tab WS Bridge atau Simulator.
-              </span>
-            ) : null}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    isRecording
+                      ? "bg-[var(--accent-danger)] motion-safe:animate-pulse"
+                      : "bg-muted-foreground"
+                  )}
+                />
+                <span>REC</span>
+                <span className="tabular-nums opacity-85">{recordedCount}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Rekam telemetri untuk ekspor CSV</TooltipContent>
+          </Tooltip>
 
-            {errorMessage ? (
-              <span
-                role="alert"
-                className="inline-flex items-center gap-1 font-semibold text-[var(--accent-danger-ink)]"
+          {recordedCount > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={onClearRecording}
+                  aria-label="Hapus rekaman CSV"
+                  className="size-8 rounded-sm border-input bg-card text-muted-foreground shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
+                >
+                  <Trash2 aria-hidden="true" className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Hapus rekaman CSV</TooltipContent>
+            </Tooltip>
+          ) : null}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onExportCsv}
+                disabled={hydrated && recordedCount === 0}
+                className="h-8 gap-1.5 rounded-sm border-input bg-card px-2.5 text-xs font-medium text-foreground shadow-none hover:border-[var(--border-strong)] dark:bg-card"
               >
-                <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                {errorMessage}
-              </span>
-            ) : null}
+                <Download aria-hidden="true" className="size-3.5" />
+                <span>CSV</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Unduh data .csv</TooltipContent>
+          </Tooltip>
 
-            {!errorMessage && statusNotice ? (
-              <span
-                role="status"
-                aria-live="polite"
-                className="inline-flex items-center gap-1 font-medium text-[var(--accent-ok)]"
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={onToggleTheme}
+                className="theme-toggle-btn size-8 rounded-sm border-input bg-card text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
               >
-                <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                {statusNotice}
-              </span>
-            ) : null}
+                {themeToggleIcons}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Ganti tema terang / gelap</TooltipContent>
+          </Tooltip>
 
-            {!errorMessage && !statusNotice && connectionMode === "simulator" && isConnected ? (
-              <span className="hidden items-center gap-1 text-[var(--ink-muted)] md:inline-flex">
-                <Radio aria-hidden="true" className="h-3 w-3 text-[var(--accent-warn)]" />
-                Mode simulasi plant 24V aktif — pilih &ldquo;Web Serial&rdquo; untuk koneksi ke modul Arduino fisik.
-              </span>
-            ) : null}
-          </div>
+          <Separator
+            orientation="vertical"
+            className="hidden h-4 sm:block"
+          />
+
+          {/* Global Emergency Stop — always 1 click away, sole red CTA on the screen */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={hydrated && !isConnected}
+                onClick={onEstop}
+                className={cn(
+                  "h-8 gap-1.5 rounded-sm px-2.5 font-mono text-xs font-semibold tracking-wide text-white shadow-none",
+                  isEstop
+                    ? "bg-[#991b1b] hover:bg-[#991b1b] dark:bg-[#991b1b]"
+                    : "bg-[var(--accent-danger)] hover:bg-[#b91c1c] dark:bg-[var(--accent-danger)] dark:hover:bg-[#dc2626]"
+                )}
+              >
+                <OctagonAlert aria-hidden="true" className="size-3.5 shrink-0" />
+                <span>{isEstop ? "E-STOP AKTIF" : "E-STOP"}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Emergency Stop instan (ESC)</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </header>

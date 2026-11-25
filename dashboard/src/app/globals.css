@@ -1,118 +1,154 @@
 @import "tailwindcss";
 
+@custom-variant dark {
+  &:where(:root:has(> head > meta[name="color-scheme"][content="dark"]) *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not(:has(> head > meta[name="color-scheme"][content="light"])) *) {
+      @slot;
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+}
+
 :root {
-  /* MANDATORY: base color-scheme follows system preference without JS */
+  /* Base color-scheme follows OS preference without JS */
   color-scheme: light dark;
+  --radius: 0.375rem;
 
-  /* Raw light & dark color tokens */
-  --bg-canvas-light: #f5f5f3;
-  --bg-canvas-dark: #090d16;
+  /* Raw light & dark matte instrumentation tokens (Zinc / Slate + Precision Accents) */
+  --bg-canvas-light: #f4f5f7;
+  --bg-canvas-dark: #090b0f;
   --bg-surface-light: #ffffff;
-  --bg-surface-dark: #111827;
-  --bg-surface-alt-light: #fafaf9;
-  --bg-surface-alt-dark: #0d1321;
-  --bg-subtle-light: #f0f1f4;
-  --bg-subtle-dark: #1e293b;
-  --bg-hover-light: #f5f5f3;
-  --bg-hover-dark: #1f2937;
+  --bg-surface-dark: #101319;
+  --bg-surface-alt-light: #f8f9fb;
+  --bg-surface-alt-dark: #141820;
+  --bg-subtle-light: #f0f2f5;
+  --bg-subtle-dark: #1b202b;
+  --bg-hover-light: #eef0f4;
+  --bg-hover-dark: #202634;
 
-  --border-hairline-light: #d5d9e2;
-  --border-hairline-dark: #263244;
-  --border-control-light: #cbd5e1;
-  --border-control-dark: #334155;
-  --border-strong-light: #0f172a;
+  --border-hairline-light: #e4e6ec;
+  --border-hairline-dark: #232836;
+  --border-control-light: #d2d6e0;
+  --border-control-dark: #303748;
+  --border-strong-light: #181c24;
   --border-strong-dark: #e2e8f0;
 
-  --ink-primary-light: #0f172a;
-  --ink-primary-dark: #f1f5f9;
-  --ink-secondary-light: #334155;
-  --ink-secondary-dark: #cbd5e1;
-  --ink-muted-light: #526075;
+  --ink-primary-light: #11151d;
+  --ink-primary-dark: #eef2f8;
+  --ink-secondary-light: #3d4656;
+  --ink-secondary-dark: #b6c0d0;
+  --ink-muted-light: #5f697a;
   --ink-muted-dark: #94a3b8;
 
-  --btn-primary-bg-light: #0f172a;
-  --btn-primary-bg-dark: #e2e8f0;
-  --btn-primary-hover-light: #1e293b;
+  --btn-primary-bg-light: #181b22;
+  --btn-primary-bg-dark: #edf1f7;
+  --btn-primary-hover-light: #2b313e;
   --btn-primary-hover-dark: #ffffff;
   --btn-primary-ink-light: #ffffff;
-  --btn-primary-ink-dark: #0f172a;
+  --btn-primary-ink-dark: #0e1117;
 
+  /* Disciplined Salience Budget */
   --accent-sp-light: #c2410c;
   --accent-sp-dark: #fb923c;
   --accent-sp-bright-light: #ea580c;
   --accent-sp-bright-dark: #fb923c;
-  --accent-sp-bg-light: #fff7ed;
-  --accent-sp-bg-dark: rgba(234, 88, 12, 0.16);
-  --accent-sp-bg-hover-light: #ffedd5;
-  --accent-sp-bg-hover-dark: rgba(234, 88, 12, 0.25);
+  --accent-sp-bg-light: rgba(234, 88, 12, 0.08);
+  --accent-sp-bg-dark: rgba(251, 146, 60, 0.14);
+  --accent-sp-bg-hover-light: rgba(234, 88, 12, 0.14);
+  --accent-sp-bg-hover-dark: rgba(251, 146, 60, 0.22);
 
   --accent-rpm-light: #1d4ed8;
   --accent-rpm-dark: #60a5fa;
   --accent-rpm-bg-light: rgba(29, 78, 216, 0.08);
-  --accent-rpm-bg-dark: rgba(96, 165, 250, 0.16);
+  --accent-rpm-bg-dark: rgba(96, 165, 250, 0.14);
 
   --accent-ok-light: #047857;
   --accent-ok-dark: #34d399;
-  --accent-ok-bg-light: #ecfdf5;
-  --accent-ok-bg-dark: rgba(16, 185, 129, 0.16);
-  --accent-ok-border-light: #a7f3d0;
-  --accent-ok-border-dark: rgba(52, 211, 153, 0.45);
+  --accent-ok-bg-light: rgba(4, 120, 87, 0.08);
+  --accent-ok-bg-dark: rgba(52, 211, 153, 0.13);
+  --accent-ok-border-light: rgba(4, 120, 87, 0.28);
+  --accent-ok-border-dark: rgba(52, 211, 153, 0.35);
 
-  --accent-warn-light: #92400e;
+  --accent-warn-light: #9a3412;
   --accent-warn-dark: #fbbf24;
-  --accent-warn-bg-light: #fffbeb;
-  --accent-warn-bg-dark: rgba(245, 158, 11, 0.16);
-  --accent-warn-bg-hover-light: #fef3c7;
-  --accent-warn-bg-hover-dark: rgba(245, 158, 11, 0.26);
-  --accent-warn-border-light: #fbbf24;
-  --accent-warn-border-dark: rgba(251, 191, 36, 0.45);
+  --accent-warn-bg-light: rgba(217, 119, 6, 0.09);
+  --accent-warn-bg-dark: rgba(251, 191, 36, 0.14);
+  --accent-warn-bg-hover-light: rgba(217, 119, 6, 0.15);
+  --accent-warn-bg-hover-dark: rgba(251, 191, 36, 0.22);
+  --accent-warn-border-light: rgba(217, 119, 6, 0.35);
+  --accent-warn-border-dark: rgba(251, 191, 36, 0.4);
 
-  --accent-danger-light: #dc2626;
-  --accent-danger-dark: #ef4444;
+  --accent-danger-light: #c81e1e;
+  --accent-danger-dark: #dc2626;
   --accent-danger-ink-light: #b91c1c;
   --accent-danger-ink-dark: #f87171;
-  --accent-danger-bg-light: #fef2f2;
-  --accent-danger-bg-dark: rgba(239, 68, 68, 0.16);
-  --accent-danger-border-light: #fca5a5;
-  --accent-danger-border-dark: rgba(248, 113, 113, 0.45);
+  --accent-danger-bg-light: rgba(220, 38, 38, 0.08);
+  --accent-danger-bg-dark: rgba(239, 68, 68, 0.15);
+  --accent-danger-border-light: rgba(220, 38, 38, 0.32);
+  --accent-danger-border-dark: rgba(248, 113, 113, 0.4);
 
-  --focus-ring-light: #1d4ed8;
+  --focus-ring-light: #2563eb;
   --focus-ring-dark: #60a5fa;
   --selection-bg-light: #dbeafe;
   --selection-bg-dark: rgba(96, 165, 250, 0.28);
   --selection-ink-light: #172554;
   --selection-ink-dark: #f8fafc;
 
-  --slider-track-light: #d5d9e2;
-  --slider-track-dark: #334155;
-  --slider-fill-default-light: #0f172a;
-  --slider-fill-default-dark: #60a5fa;
-
+  /* Oscilloscope Canvas Tokens */
   --chart-bg-light: #ffffff;
-  --chart-bg-dark: #111827;
-  --chart-plot-bg-light: #fcfcfb;
-  --chart-plot-bg-dark: #0b1120;
-  --chart-grid-light: #eef0f4;
-  --chart-grid-dark: #1e293b;
-  --chart-axis-light: #cbd5e1;
-  --chart-axis-dark: #334155;
-  --chart-pwm-stroke-light: #0f172a;
-  --chart-pwm-stroke-dark: #e2e8f0;
-  --chart-pwm-fill-light: rgba(15, 23, 42, 0.08);
-  --chart-pwm-fill-dark: rgba(226, 232, 240, 0.12);
-  --chart-band-fill-light: rgba(4, 120, 87, 0.10);
-  --chart-band-fill-dark: rgba(52, 211, 153, 0.14);
-  --chart-step-line-light: rgba(15, 23, 42, 0.30);
-  --chart-step-line-dark: rgba(226, 232, 240, 0.35);
+  --chart-bg-dark: #0e1117;
+  --chart-plot-bg-light: #fafbfc;
+  --chart-plot-bg-dark: #090b10;
+  --chart-grid-light: #eceff4;
+  --chart-grid-dark: #191e29;
+  --chart-axis-light: #d2d7e0;
+  --chart-axis-dark: #2a3140;
+  --chart-pwm-stroke-light: #334155;
+  --chart-pwm-stroke-dark: #cbd5e1;
+  --chart-pwm-fill-light: rgba(51, 65, 85, 0.08);
+  --chart-pwm-fill-dark: rgba(203, 213, 225, 0.10);
+  --chart-band-fill-light: rgba(4, 120, 87, 0.09);
+  --chart-band-fill-dark: rgba(52, 211, 153, 0.12);
+  --chart-step-line-light: rgba(17, 21, 29, 0.25);
+  --chart-step-line-dark: rgba(237, 241, 247, 0.28);
   --chart-ts-line-light: rgba(4, 120, 87, 0.45);
   --chart-ts-line-dark: rgba(52, 211, 153, 0.50);
 
-  --scrollbar-track-light: #f0f1f4;
-  --scrollbar-track-dark: #0f172a;
-  --scrollbar-thumb-light: #64748b;
-  --scrollbar-thumb-dark: #64748b;
+  --scrollbar-track-light: #f1f3f6;
+  --scrollbar-track-dark: #0e1117;
+  --scrollbar-thumb-light: #9aa3b2;
+  --scrollbar-thumb-dark: #3a4356;
 
-  /* Default (light) semantic values — fallback for browsers without light-dark() */
+  /* Default (light) fallback for browsers without light-dark() */
   --bg-canvas: var(--bg-canvas-light);
   --bg-surface: var(--bg-surface-light);
   --bg-surface-alt: var(--bg-surface-alt-light);
@@ -147,8 +183,6 @@
   --focus-ring: var(--focus-ring-light);
   --selection-bg: var(--selection-bg-light);
   --selection-ink: var(--selection-ink-light);
-  --slider-track: var(--slider-track-light);
-  --slider-fill-default: var(--slider-fill-default-light);
   --chart-bg: var(--chart-bg-light);
   --chart-plot-bg: var(--chart-plot-bg-light);
   --chart-grid: var(--chart-grid-light);
@@ -161,10 +195,9 @@
   --scrollbar-track: var(--scrollbar-track-light);
   --scrollbar-thumb: var(--scrollbar-thumb-light);
 
-  --font-sans-stack: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono-stack: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans-stack: var(--font-space-grotesk), "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono-stack: var(--font-ibm-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Fallback for browsers without light-dark() */
   @media (prefers-color-scheme: dark) {
     --bg-canvas: var(--bg-canvas-dark);
     --bg-surface: var(--bg-surface-dark);
@@ -200,8 +233,6 @@
     --focus-ring: var(--focus-ring-dark);
     --selection-bg: var(--selection-bg-dark);
     --selection-ink: var(--selection-ink-dark);
-    --slider-track: var(--slider-track-dark);
-    --slider-fill-default: var(--slider-fill-default-dark);
     --chart-bg: var(--chart-bg-dark);
     --chart-plot-bg: var(--chart-plot-bg-dark);
     --chart-grid: var(--chart-grid-dark);
@@ -215,7 +246,6 @@
     --scrollbar-thumb: var(--scrollbar-thumb-dark);
   }
 
-  /* Modern dynamic tokens via light-dark() — follows color-scheme automatically */
   @supports (color: light-dark(white, black)) {
     --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
     --bg-surface: light-dark(var(--bg-surface-light), var(--bg-surface-dark));
@@ -251,8 +281,6 @@
     --focus-ring: light-dark(var(--focus-ring-light), var(--focus-ring-dark));
     --selection-bg: light-dark(var(--selection-bg-light), var(--selection-bg-dark));
     --selection-ink: light-dark(var(--selection-ink-light), var(--selection-ink-dark));
-    --slider-track: light-dark(var(--slider-track-light), var(--slider-track-dark));
-    --slider-fill-default: light-dark(var(--slider-fill-default-light), var(--slider-fill-default-dark));
     --chart-bg: light-dark(var(--chart-bg-light), var(--chart-bg-dark));
     --chart-plot-bg: light-dark(var(--chart-plot-bg-light), var(--chart-plot-bg-dark));
     --chart-grid: light-dark(var(--chart-grid-light), var(--chart-grid-dark));
@@ -266,7 +294,27 @@
     --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
   }
 
-  /* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
+  /* shadcn/ui semantic variable mappings */
+  --background: var(--bg-canvas);
+  --foreground: var(--ink-primary);
+  --card: var(--bg-surface);
+  --card-foreground: var(--ink-primary);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--ink-primary);
+  --primary: var(--btn-primary-bg);
+  --primary-foreground: var(--btn-primary-ink);
+  --secondary: var(--bg-subtle);
+  --secondary-foreground: var(--ink-primary);
+  --muted: var(--bg-subtle);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--ink-primary);
+  --destructive: var(--accent-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--border-hairline);
+  --input: var(--border-control);
+  --ring: var(--focus-ring);
+
   &:has(> head > meta[name="color-scheme"][content="dark"]) {
     color-scheme: dark;
   }
@@ -278,7 +326,7 @@
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
-/* CSS-driven two-state theme toggle icons/labels (no hydration flicker, stays synced without JS) */
+/* CSS-driven two-state theme toggle icons/labels (zero hydration mismatch) */
 .theme-toggle-btn .theme-when-dark {
   display: none;
 }
@@ -303,12 +351,16 @@
 }
 
 @layer base {
+  * {
+    border-color: var(--border);
+  }
+
   html,
   body {
-    background-color: var(--bg-canvas);
-    color: var(--ink-primary);
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-sans-stack);
-    line-height: 1.5;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -319,9 +371,8 @@
     font-family: var(--font-mono-stack);
   }
 
-  /* High-contrast keyboard focus ring across all interactive controls */
   :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
-    outline: 2px solid var(--focus-ring);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
@@ -342,7 +393,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Visually hidden utility (stays in accessibility tree; reveals on focus for skip links) */
 .visually-hidden:where(:not(:focus-within, :active)) {
   position: absolute !important;
   clip-path: inset(50%) !important;
@@ -360,173 +410,28 @@
   top: 0.5rem;
   left: 0.5rem;
   z-index: 60;
-  background: var(--btn-primary-bg);
-  color: var(--btn-primary-ink);
+  background: var(--primary);
+  color: var(--primary-foreground);
   padding: 0.5rem 0.875rem;
   font-size: 0.75rem;
   font-weight: 600;
   text-decoration: none;
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
-/* Isolated containment for high-frequency telemetry panels (prevents page-wide reflows) */
 .panel-isolated {
   contain: layout style paint;
 }
 
-/* Below-the-fold region containment with graceful fallback */
-.below-fold-region {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 4rem;
-}
-
-@supports not (content-visibility: auto) {
-  .below-fold-region {
-    contain: layout style paint;
-  }
-}
-
-/* Swiss Technical precision range slider with CSS custom-property fill (--slider-pct) */
-input[type="range"].swiss-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  min-block-size: 1.75rem;
-  padding-block: 0.625rem;
-  background: transparent;
-  border-radius: 0;
-  cursor: pointer;
-}
-
-input[type="range"].swiss-slider::-webkit-slider-runnable-track {
-  height: 4px;
-  background: linear-gradient(
-    to right,
-    var(--slider-fill, var(--slider-fill-default)) 0%,
-    var(--slider-fill, var(--slider-fill-default)) var(--slider-pct, 0%),
-    var(--slider-track) var(--slider-pct, 0%),
-    var(--slider-track) 100%
-  );
-  border-radius: 0;
-}
-
-input[type="range"].swiss-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 20px;
-  margin-top: -8px;
-  background: var(--slider-fill, var(--slider-fill-default));
-  border: 1px solid var(--slider-fill, var(--slider-fill-default));
-  border-radius: 1px;
-  cursor: ew-resize;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-
-input[type="range"].swiss-slider::-webkit-slider-thumb:hover {
-  background: var(--accent-rpm);
-  border-color: var(--accent-rpm);
-}
-
-input[type="range"].swiss-slider::-moz-range-track {
-  height: 4px;
-  background: var(--slider-track);
-  border-radius: 0;
-}
-
-input[type="range"].swiss-slider::-moz-range-progress {
-  height: 4px;
-  background: var(--slider-fill, var(--slider-fill-default));
-}
-
-input[type="range"].swiss-slider::-moz-range-thumb {
-  width: 12px;
-  height: 20px;
-  background: var(--slider-fill, var(--slider-fill-default));
-  border: 1px solid var(--slider-fill, var(--slider-fill-default));
-  border-radius: 1px;
-  cursor: ew-resize;
-}
-
-input[type="range"].swiss-slider-orange {
-  --slider-fill: var(--accent-sp-bright);
-}
-
-input[type="range"].swiss-slider-orange::-webkit-slider-thumb:hover {
-  background: var(--accent-sp);
-  border-color: var(--accent-sp);
-}
-
-/* Native <details> disclosure styling & progressive height animation */
-details.swiss-disclosure > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-details.swiss-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-
-details.swiss-disclosure > summary .disclosure-chevron {
-  transform: rotate(0deg);
-}
-
-details.swiss-disclosure[open] > summary .disclosure-chevron {
-  transform: rotate(90deg);
-}
-
-details.swiss-disclosure::details-content {
-  interpolate-size: allow-keywords;
-  overflow: clip;
-  contain: layout;
-}
-
-details.swiss-disclosure:not([open])::details-content {
-  block-size: 0;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  details.swiss-disclosure > summary .disclosure-chevron {
-    transition: transform 180ms ease;
-  }
-
-  details.swiss-disclosure::details-content {
-    transition: block-size, content-visibility, display;
-    transition-duration: 220ms;
-    transition-timing-function: ease-in-out;
-    transition-behavior: allow-discrete;
-  }
-}
-
-/* Authentic 16x2 LCD subtle pixel matrix (hardware LCD always stays dark green) */
+/* Authentic 16x2 LCD subtle pixel matrix */
 .lcd-matrix {
   color-scheme: dark;
-  background-color: #0e1f14;
-  background-image: radial-gradient(rgba(134, 239, 172, 0.09) 1px, transparent 0);
+  background-color: #0d1d13;
+  background-image: radial-gradient(rgba(134, 239, 172, 0.08) 1px, transparent 0);
   background-size: 4px 4px;
 }
 
-/* Coarse pointer ergonomics: ensure comfortable touch target heights */
-@media (pointer: coarse) {
-  input[type="range"].swiss-slider {
-    min-block-size: 2.5rem;
-    padding-block: 1rem;
-  }
-
-  input[type="range"].swiss-slider::-webkit-slider-thumb {
-    width: 18px;
-    height: 26px;
-    margin-top: -11px;
-  }
-
-  input[type="range"].swiss-slider::-moz-range-thumb {
-    width: 18px;
-    height: 26px;
-  }
-}
-
-/* Windows Forced Colors (High Contrast) support */
 @media (forced-colors: active) {
   :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
     outline: 3px solid Highlight;
@@ -536,11 +441,5 @@ details.swiss-disclosure:not([open])::details-content {
   .lcd-matrix {
     border: 2px solid CanvasText;
     background-image: none;
-  }
-
-  input[type="range"].swiss-slider::-webkit-slider-thumb,
-  input[type="range"].swiss-slider::-moz-range-thumb {
-    background: Highlight;
-    border: 2px solid CanvasText;
   }
 }

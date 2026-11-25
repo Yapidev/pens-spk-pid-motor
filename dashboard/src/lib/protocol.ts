@@ -80,7 +80,7 @@ export function parseSerialLine(
     return {
       type: "ack",
       key: parts[1] ?? "",
-      value: parts.slice(2).join(","),
+      value: parts.length <= 3 ? (parts[2] ?? "") : parts.slice(2).join(","),
     };
   }
 

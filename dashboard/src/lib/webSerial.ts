@@ -28,6 +28,8 @@ interface NavigatorWithSerial extends Navigator {
   };
 }
 
+const LINE_SPLIT_RE = /\r?\n/;
+
 export function isWebSerialSupported(): boolean {
   if (typeof navigator === "undefined") return false;
   return "serial" in navigator && Boolean((navigator as NavigatorWithSerial).serial);
@@ -111,7 +113,7 @@ export class SerialTransport {
 
           ws.onmessage = (event) => {
             const payload = String(event.data ?? "");
-            for (const line of payload.split(/\r?\n/)) {
+            for (const line of payload.split(LINE_SPLIT_RE)) {
               const trimmed = line.trim();
               if (trimmed) callbacks.onLine(trimmed);
             }

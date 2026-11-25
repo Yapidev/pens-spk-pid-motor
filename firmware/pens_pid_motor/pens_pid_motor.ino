@@ -1,12 +1,13 @@
 // ============================================================================
 // PENS - Sistem Pengaturan Komputer (SPK)
 // Firmware Kontrol Kecepatan (RPM) Motor DC 24V Berbasis PID Diskrit
-// Target: Arduino Uno (ATmega328P) / Arduino Mega 2560 (ATmega2560)
+// Target Utama: Arduino DUE (SAM3X8E 32-bit ARM Cortex-M3 — Modul Praktikum 4)
+// Kompatibel juga: Arduino Uno (ATmega328P) / Arduino Mega 2560 (ATmega2560)
 //
 // Fitur:
-//   - Pembacaan Encoder Motor DC & Rotary Encoder Eksternal berbasis Interrupt
+//   - Pembacaan Encoder Motor DC & Potensio Rotary Encoder berbasis Interrupt
 //   - Kontroler PID Diskrit (Anti-Windup, Derivative-on-Measurement, Clamp 0-255)
-//   - Mode Operasi: Closed-Loop PID & Open-Loop Manual PWM
+//   - Mode Operasi: Closed-Loop PID & Open-Loop Manual PWM (Driver IBT-2 BTN7960B)
 //   - Display LCD 16x2 Keypad Shield responsif (PWM, V, RPM, SP + menu lokal)
 //   - Komunikasi Serial R/W 115200 baud (CSV terstruktur + parser non-blocking)
 // ============================================================================
@@ -14,6 +15,9 @@
 #include <LiquidCrystal.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(ARDUINO_ARCH_SAM)
+#include <avr/dtostrf.h>
+#endif
 #include "config.h"
 #include "pid_controller.h"
 
@@ -56,6 +60,7 @@ float g_setpointRpm = 120.0f;
 float g_actualRpm = 0.0f;
 float g_filteredRpm = 0.0f;
 float g_supplyVoltage = VOLTAGE_NOMINAL_24V;
+float g_motorCurrentAmp = 0.0f;
 float g_motorPpr = DEFAULT_MOTOR_PPR;
 int16_t g_manualPwm = 100;
 int16_t g_currentPwm = 0;
@@ -165,8 +170,24 @@ void updateSupplyVoltage() {
     return;
   }
 #endif
-  const float measuredV = ((float)rawAdc * ADC_VREF / 1023.0f) * VOLTAGE_DIVIDER_RATIO;
+  const float measuredV = ((float)rawAdc * ADC_VREF / 1024.0f) * VOLTAGE_DIVIDER_RATIO;
   g_supplyVoltage = (VOLTAGE_EMA_ALPHA * measuredV) + ((1.0f - VOLTAGE_EMA_ALPHA) * g_supplyVoltage);
+}
+
+void updateMotorCurrent() {
+#if defined(PIN_CURRENT_ADC)
+  const int rawAdc = analogRead(PIN_CURRENT_ADC);
+  const float iReadMv = ((float)rawAdc * (ADC_VREF * 1000.0f)) / 1024.0f;
+  float measuredAmp = (iReadMv - ACS712_OFFSET_MV) / ACS712_MV_PER_AMP;
+  if (measuredAmp < 0.0f) measuredAmp = -measuredAmp;
+  if (g_currentPwm == 0 && measuredAmp < 0.04f) {
+    measuredAmp = 0.0f;
+  }
+  g_motorCurrentAmp =
+      (CURRENT_EMA_ALPHA * measuredAmp) + ((1.0f - CURRENT_EMA_ALPHA) * g_motorCurrentAmp);
+#else
+  g_motorCurrentAmp = 0.0f;
+#endif
 }
 
 // ============================================================================
@@ -175,8 +196,8 @@ void updateSupplyVoltage() {
 
 void sendTelemetryFrame(uint32_t nowMs) {
   // Format:
-  // T,<timestamp_ms>,<sp>,<rpm>,<error>,<pwm>,<volt>,<kp>,<ki>,<kd>,<mode>,<run>
-  char spS[10], rpmS[10], errS[10], voltS[8], kpS[10], kiS[10], kdS[10];
+  // T,<timestamp_ms>,<sp>,<rpm>,<error>,<pwm>,<volt>,<kp>,<ki>,<kd>,<mode>,<run>,<current_a>
+  char spS[10], rpmS[10], errS[10], voltS[8], kpS[10], kiS[10], kdS[10], curS[8];
 
   const float errorVal = (g_mode == MODE_CLOSED_PID) ? (g_setpointRpm - g_filteredRpm) : 0.0f;
 
@@ -187,6 +208,7 @@ void sendTelemetryFrame(uint32_t nowMs) {
   dtostrf(pid.getKp(), 1, 3, kpS);
   dtostrf(pid.getKi(), 1, 3, kiS);
   dtostrf(pid.getKd(), 1, 3, kdS);
+  dtostrf(g_motorCurrentAmp, 1, 2, curS);
 
   Serial.print(F("T,"));
   Serial.print(nowMs - g_sessionStartMs);
@@ -209,7 +231,9 @@ void sendTelemetryFrame(uint32_t nowMs) {
   Serial.print(',');
   Serial.print((uint8_t)g_mode);
   Serial.print(',');
-  Serial.println(g_running ? 1 : (g_estopLatched ? 2 : 0));
+  Serial.print(g_running ? 1 : (g_estopLatched ? 2 : 0));
+  Serial.print(',');
+  Serial.println(curS);
 }
 
 void sendAck(const __FlashStringHelper* key, const char* val) {
@@ -346,6 +370,7 @@ void pollSerialInput() {
 
 KeypadButton readKeypadButton() {
   const int adc = analogRead(PIN_KEYPAD_ADC);
+  if (adc > KEY_NONE_MIN) return KEY_NONE;
   if (adc < KEY_RIGHT_MAX) return KEY_RIGHT;
   if (adc < KEY_UP_MAX) return KEY_UP;
   if (adc < KEY_DOWN_MAX) return KEY_DOWN;
@@ -539,16 +564,21 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_MOTOR_ENC_A), isrMotorEncoder, RISING);
   attachInterrupt(digitalPinToInterrupt(PIN_ROT_ENC_CLK), isrRotaryEncoder, FALLING);
 
-  // Inisialisasi LCD 16x2
+  // Inisialisasi LCD 16x2 & Backlight PWM (Pin 10 pada Modul PENS)
+#if defined(PIN_LCD_BACKLIGHT)
+  pinMode(PIN_LCD_BACKLIGHT, OUTPUT);
+  analogWrite(PIN_LCD_BACKLIGHT, LCD_BACKLIGHT_PWM);
+#endif
   lcd.begin(16, 2);
   lcd.setCursor(0, 0);
   lcd.print(F("PENS SPK PID v1 "));
   lcd.setCursor(0, 1);
   lcd.print(F("DC Motor 24V... "));
 
-  // Pre-sample tegangan supply agar stabil saat boot
+  // Pre-sample tegangan supply & arus motor agar stabil saat boot
   for (uint8_t i = 0; i < 8; i++) {
     updateSupplyVoltage();
+    updateMotorCurrent();
     delay(15);
   }
 
@@ -590,8 +620,9 @@ void loop() {
       g_filteredRpm = 0.0f;
     }
 
-    // Update pembacaan tegangan supply 24V
+    // Update pembacaan tegangan supply 24V & arus motor (ACS712 5A)
     updateSupplyVoltage();
+    updateMotorCurrent();
 
     // Hitung output aktuator (PWM)
     if (!g_running || g_estopLatched) {

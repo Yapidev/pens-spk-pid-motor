@@ -1,18 +1,305 @@
 @import "tailwindcss";
 
 :root {
-  --bg-canvas: #f5f5f3;
-  --bg-surface: #ffffff;
-  --bg-subtle: #f0f1f4;
-  --border-hairline: #dfe2e8;
-  --border-strong: #c5cbd6;
-  --ink-primary: #0f172a;
-  --ink-secondary: #475569;
-  --ink-muted: #64748b;
-  --accent-sp: #ea580c;
-  --accent-rpm: #1d4ed8;
-  --accent-ok: #059669;
-  --accent-danger: #dc2626;
+  /* MANDATORY: base color-scheme follows system preference without JS */
+  color-scheme: light dark;
+
+  /* Raw light & dark color tokens */
+  --bg-canvas-light: #f5f5f3;
+  --bg-canvas-dark: #090d16;
+  --bg-surface-light: #ffffff;
+  --bg-surface-dark: #111827;
+  --bg-surface-alt-light: #fafaf9;
+  --bg-surface-alt-dark: #0d1321;
+  --bg-subtle-light: #f0f1f4;
+  --bg-subtle-dark: #1e293b;
+  --bg-hover-light: #f5f5f3;
+  --bg-hover-dark: #1f2937;
+
+  --border-hairline-light: #d5d9e2;
+  --border-hairline-dark: #263244;
+  --border-control-light: #cbd5e1;
+  --border-control-dark: #334155;
+  --border-strong-light: #0f172a;
+  --border-strong-dark: #e2e8f0;
+
+  --ink-primary-light: #0f172a;
+  --ink-primary-dark: #f1f5f9;
+  --ink-secondary-light: #334155;
+  --ink-secondary-dark: #cbd5e1;
+  --ink-muted-light: #526075;
+  --ink-muted-dark: #94a3b8;
+
+  --btn-primary-bg-light: #0f172a;
+  --btn-primary-bg-dark: #e2e8f0;
+  --btn-primary-hover-light: #1e293b;
+  --btn-primary-hover-dark: #ffffff;
+  --btn-primary-ink-light: #ffffff;
+  --btn-primary-ink-dark: #0f172a;
+
+  --accent-sp-light: #c2410c;
+  --accent-sp-dark: #fb923c;
+  --accent-sp-bright-light: #ea580c;
+  --accent-sp-bright-dark: #fb923c;
+  --accent-sp-bg-light: #fff7ed;
+  --accent-sp-bg-dark: rgba(234, 88, 12, 0.16);
+  --accent-sp-bg-hover-light: #ffedd5;
+  --accent-sp-bg-hover-dark: rgba(234, 88, 12, 0.25);
+
+  --accent-rpm-light: #1d4ed8;
+  --accent-rpm-dark: #60a5fa;
+  --accent-rpm-bg-light: rgba(29, 78, 216, 0.08);
+  --accent-rpm-bg-dark: rgba(96, 165, 250, 0.16);
+
+  --accent-ok-light: #047857;
+  --accent-ok-dark: #34d399;
+  --accent-ok-bg-light: #ecfdf5;
+  --accent-ok-bg-dark: rgba(16, 185, 129, 0.16);
+  --accent-ok-border-light: #a7f3d0;
+  --accent-ok-border-dark: rgba(52, 211, 153, 0.45);
+
+  --accent-warn-light: #92400e;
+  --accent-warn-dark: #fbbf24;
+  --accent-warn-bg-light: #fffbeb;
+  --accent-warn-bg-dark: rgba(245, 158, 11, 0.16);
+  --accent-warn-bg-hover-light: #fef3c7;
+  --accent-warn-bg-hover-dark: rgba(245, 158, 11, 0.26);
+  --accent-warn-border-light: #fbbf24;
+  --accent-warn-border-dark: rgba(251, 191, 36, 0.45);
+
+  --accent-danger-light: #dc2626;
+  --accent-danger-dark: #ef4444;
+  --accent-danger-ink-light: #b91c1c;
+  --accent-danger-ink-dark: #f87171;
+  --accent-danger-bg-light: #fef2f2;
+  --accent-danger-bg-dark: rgba(239, 68, 68, 0.16);
+  --accent-danger-border-light: #fca5a5;
+  --accent-danger-border-dark: rgba(248, 113, 113, 0.45);
+
+  --focus-ring-light: #1d4ed8;
+  --focus-ring-dark: #60a5fa;
+  --selection-bg-light: #dbeafe;
+  --selection-bg-dark: rgba(96, 165, 250, 0.28);
+  --selection-ink-light: #172554;
+  --selection-ink-dark: #f8fafc;
+
+  --slider-track-light: #d5d9e2;
+  --slider-track-dark: #334155;
+  --slider-fill-default-light: #0f172a;
+  --slider-fill-default-dark: #60a5fa;
+
+  --chart-bg-light: #ffffff;
+  --chart-bg-dark: #111827;
+  --chart-plot-bg-light: #fcfcfb;
+  --chart-plot-bg-dark: #0b1120;
+  --chart-grid-light: #eef0f4;
+  --chart-grid-dark: #1e293b;
+  --chart-axis-light: #cbd5e1;
+  --chart-axis-dark: #334155;
+  --chart-pwm-stroke-light: #0f172a;
+  --chart-pwm-stroke-dark: #e2e8f0;
+  --chart-pwm-fill-light: rgba(15, 23, 42, 0.08);
+  --chart-pwm-fill-dark: rgba(226, 232, 240, 0.12);
+  --chart-band-fill-light: rgba(4, 120, 87, 0.10);
+  --chart-band-fill-dark: rgba(52, 211, 153, 0.14);
+  --chart-step-line-light: rgba(15, 23, 42, 0.30);
+  --chart-step-line-dark: rgba(226, 232, 240, 0.35);
+  --chart-ts-line-light: rgba(4, 120, 87, 0.45);
+  --chart-ts-line-dark: rgba(52, 211, 153, 0.50);
+
+  --scrollbar-track-light: #f0f1f4;
+  --scrollbar-track-dark: #0f172a;
+  --scrollbar-thumb-light: #64748b;
+  --scrollbar-thumb-dark: #64748b;
+
+  /* Default (light) semantic values — fallback for browsers without light-dark() */
+  --bg-canvas: var(--bg-canvas-light);
+  --bg-surface: var(--bg-surface-light);
+  --bg-surface-alt: var(--bg-surface-alt-light);
+  --bg-subtle: var(--bg-subtle-light);
+  --bg-hover: var(--bg-hover-light);
+  --border-hairline: var(--border-hairline-light);
+  --border-control: var(--border-control-light);
+  --border-strong: var(--border-strong-light);
+  --ink-primary: var(--ink-primary-light);
+  --ink-secondary: var(--ink-secondary-light);
+  --ink-muted: var(--ink-muted-light);
+  --btn-primary-bg: var(--btn-primary-bg-light);
+  --btn-primary-hover: var(--btn-primary-hover-light);
+  --btn-primary-ink: var(--btn-primary-ink-light);
+  --accent-sp: var(--accent-sp-light);
+  --accent-sp-bright: var(--accent-sp-bright-light);
+  --accent-sp-bg: var(--accent-sp-bg-light);
+  --accent-sp-bg-hover: var(--accent-sp-bg-hover-light);
+  --accent-rpm: var(--accent-rpm-light);
+  --accent-rpm-bg: var(--accent-rpm-bg-light);
+  --accent-ok: var(--accent-ok-light);
+  --accent-ok-bg: var(--accent-ok-bg-light);
+  --accent-ok-border: var(--accent-ok-border-light);
+  --accent-warn: var(--accent-warn-light);
+  --accent-warn-bg: var(--accent-warn-bg-light);
+  --accent-warn-bg-hover: var(--accent-warn-bg-hover-light);
+  --accent-warn-border: var(--accent-warn-border-light);
+  --accent-danger: var(--accent-danger-light);
+  --accent-danger-ink: var(--accent-danger-ink-light);
+  --accent-danger-bg: var(--accent-danger-bg-light);
+  --accent-danger-border: var(--accent-danger-border-light);
+  --focus-ring: var(--focus-ring-light);
+  --selection-bg: var(--selection-bg-light);
+  --selection-ink: var(--selection-ink-light);
+  --slider-track: var(--slider-track-light);
+  --slider-fill-default: var(--slider-fill-default-light);
+  --chart-bg: var(--chart-bg-light);
+  --chart-plot-bg: var(--chart-plot-bg-light);
+  --chart-grid: var(--chart-grid-light);
+  --chart-axis: var(--chart-axis-light);
+  --chart-pwm-stroke: var(--chart-pwm-stroke-light);
+  --chart-pwm-fill: var(--chart-pwm-fill-light);
+  --chart-band-fill: var(--chart-band-fill-light);
+  --chart-step-line: var(--chart-step-line-light);
+  --chart-ts-line: var(--chart-ts-line-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  --font-sans-stack: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono-stack: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Fallback for browsers without light-dark() */
+  @media (prefers-color-scheme: dark) {
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-surface: var(--bg-surface-dark);
+    --bg-surface-alt: var(--bg-surface-alt-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --bg-hover: var(--bg-hover-dark);
+    --border-hairline: var(--border-hairline-dark);
+    --border-control: var(--border-control-dark);
+    --border-strong: var(--border-strong-dark);
+    --ink-primary: var(--ink-primary-dark);
+    --ink-secondary: var(--ink-secondary-dark);
+    --ink-muted: var(--ink-muted-dark);
+    --btn-primary-bg: var(--btn-primary-bg-dark);
+    --btn-primary-hover: var(--btn-primary-hover-dark);
+    --btn-primary-ink: var(--btn-primary-ink-dark);
+    --accent-sp: var(--accent-sp-dark);
+    --accent-sp-bright: var(--accent-sp-bright-dark);
+    --accent-sp-bg: var(--accent-sp-bg-dark);
+    --accent-sp-bg-hover: var(--accent-sp-bg-hover-dark);
+    --accent-rpm: var(--accent-rpm-dark);
+    --accent-rpm-bg: var(--accent-rpm-bg-dark);
+    --accent-ok: var(--accent-ok-dark);
+    --accent-ok-bg: var(--accent-ok-bg-dark);
+    --accent-ok-border: var(--accent-ok-border-dark);
+    --accent-warn: var(--accent-warn-dark);
+    --accent-warn-bg: var(--accent-warn-bg-dark);
+    --accent-warn-bg-hover: var(--accent-warn-bg-hover-dark);
+    --accent-warn-border: var(--accent-warn-border-dark);
+    --accent-danger: var(--accent-danger-dark);
+    --accent-danger-ink: var(--accent-danger-ink-dark);
+    --accent-danger-bg: var(--accent-danger-bg-dark);
+    --accent-danger-border: var(--accent-danger-border-dark);
+    --focus-ring: var(--focus-ring-dark);
+    --selection-bg: var(--selection-bg-dark);
+    --selection-ink: var(--selection-ink-dark);
+    --slider-track: var(--slider-track-dark);
+    --slider-fill-default: var(--slider-fill-default-dark);
+    --chart-bg: var(--chart-bg-dark);
+    --chart-plot-bg: var(--chart-plot-bg-dark);
+    --chart-grid: var(--chart-grid-dark);
+    --chart-axis: var(--chart-axis-dark);
+    --chart-pwm-stroke: var(--chart-pwm-stroke-dark);
+    --chart-pwm-fill: var(--chart-pwm-fill-dark);
+    --chart-band-fill: var(--chart-band-fill-dark);
+    --chart-step-line: var(--chart-step-line-dark);
+    --chart-ts-line: var(--chart-ts-line-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  /* Modern dynamic tokens via light-dark() — follows color-scheme automatically */
+  @supports (color: light-dark(white, black)) {
+    --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
+    --bg-surface: light-dark(var(--bg-surface-light), var(--bg-surface-dark));
+    --bg-surface-alt: light-dark(var(--bg-surface-alt-light), var(--bg-surface-alt-dark));
+    --bg-subtle: light-dark(var(--bg-subtle-light), var(--bg-subtle-dark));
+    --bg-hover: light-dark(var(--bg-hover-light), var(--bg-hover-dark));
+    --border-hairline: light-dark(var(--border-hairline-light), var(--border-hairline-dark));
+    --border-control: light-dark(var(--border-control-light), var(--border-control-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --ink-primary: light-dark(var(--ink-primary-light), var(--ink-primary-dark));
+    --ink-secondary: light-dark(var(--ink-secondary-light), var(--ink-secondary-dark));
+    --ink-muted: light-dark(var(--ink-muted-light), var(--ink-muted-dark));
+    --btn-primary-bg: light-dark(var(--btn-primary-bg-light), var(--btn-primary-bg-dark));
+    --btn-primary-hover: light-dark(var(--btn-primary-hover-light), var(--btn-primary-hover-dark));
+    --btn-primary-ink: light-dark(var(--btn-primary-ink-light), var(--btn-primary-ink-dark));
+    --accent-sp: light-dark(var(--accent-sp-light), var(--accent-sp-dark));
+    --accent-sp-bright: light-dark(var(--accent-sp-bright-light), var(--accent-sp-bright-dark));
+    --accent-sp-bg: light-dark(var(--accent-sp-bg-light), var(--accent-sp-bg-dark));
+    --accent-sp-bg-hover: light-dark(var(--accent-sp-bg-hover-light), var(--accent-sp-bg-hover-dark));
+    --accent-rpm: light-dark(var(--accent-rpm-light), var(--accent-rpm-dark));
+    --accent-rpm-bg: light-dark(var(--accent-rpm-bg-light), var(--accent-rpm-bg-dark));
+    --accent-ok: light-dark(var(--accent-ok-light), var(--accent-ok-dark));
+    --accent-ok-bg: light-dark(var(--accent-ok-bg-light), var(--accent-ok-bg-dark));
+    --accent-ok-border: light-dark(var(--accent-ok-border-light), var(--accent-ok-border-dark));
+    --accent-warn: light-dark(var(--accent-warn-light), var(--accent-warn-dark));
+    --accent-warn-bg: light-dark(var(--accent-warn-bg-light), var(--accent-warn-bg-dark));
+    --accent-warn-bg-hover: light-dark(var(--accent-warn-bg-hover-light), var(--accent-warn-bg-hover-dark));
+    --accent-warn-border: light-dark(var(--accent-warn-border-light), var(--accent-warn-border-dark));
+    --accent-danger: light-dark(var(--accent-danger-light), var(--accent-danger-dark));
+    --accent-danger-ink: light-dark(var(--accent-danger-ink-light), var(--accent-danger-ink-dark));
+    --accent-danger-bg: light-dark(var(--accent-danger-bg-light), var(--accent-danger-bg-dark));
+    --accent-danger-border: light-dark(var(--accent-danger-border-light), var(--accent-danger-border-dark));
+    --focus-ring: light-dark(var(--focus-ring-light), var(--focus-ring-dark));
+    --selection-bg: light-dark(var(--selection-bg-light), var(--selection-bg-dark));
+    --selection-ink: light-dark(var(--selection-ink-light), var(--selection-ink-dark));
+    --slider-track: light-dark(var(--slider-track-light), var(--slider-track-dark));
+    --slider-fill-default: light-dark(var(--slider-fill-default-light), var(--slider-fill-default-dark));
+    --chart-bg: light-dark(var(--chart-bg-light), var(--chart-bg-dark));
+    --chart-plot-bg: light-dark(var(--chart-plot-bg-light), var(--chart-plot-bg-dark));
+    --chart-grid: light-dark(var(--chart-grid-light), var(--chart-grid-dark));
+    --chart-axis: light-dark(var(--chart-axis-light), var(--chart-axis-dark));
+    --chart-pwm-stroke: light-dark(var(--chart-pwm-stroke-light), var(--chart-pwm-stroke-dark));
+    --chart-pwm-fill: light-dark(var(--chart-pwm-fill-light), var(--chart-pwm-fill-dark));
+    --chart-band-fill: light-dark(var(--chart-band-fill-light), var(--chart-band-fill-dark));
+    --chart-step-line: light-dark(var(--chart-step-line-light), var(--chart-step-line-dark));
+    --chart-ts-line: light-dark(var(--chart-ts-line-light), var(--chart-ts-line-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
+  /* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+
+  accent-color: var(--accent-rpm);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* CSS-driven two-state theme toggle icons/labels (no hydration flicker, stays synced without JS) */
+.theme-toggle-btn .theme-when-dark {
+  display: none;
+}
+.theme-toggle-btn .theme-when-light {
+  display: inline-flex;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-toggle-btn .theme-when-light {
+    display: none;
+  }
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-toggle-btn .theme-when-dark {
+    display: inline-flex;
+  }
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle-btn .theme-when-light {
+  display: none;
+}
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle-btn .theme-when-dark {
+  display: inline-flex;
 }
 
 @layer base {
@@ -20,7 +307,8 @@
   body {
     background-color: var(--bg-canvas);
     color: var(--ink-primary);
-    font-family: "Inter", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans-stack);
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -28,7 +316,25 @@
   code,
   pre,
   .font-mono {
-    font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono-stack);
+  }
+
+  /* High-contrast keyboard focus ring across all interactive controls */
+  :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Hilangkan spinner panah atas/bawah bawaan browser pada semua input number */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 }
 
@@ -36,57 +342,205 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Swiss Technical precision range slider */
+/* Visually hidden utility (stays in accessibility tree; reveals on focus for skip links) */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+.skip-link:focus-visible {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 60;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-ink);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Isolated containment for high-frequency telemetry panels (prevents page-wide reflows) */
+.panel-isolated {
+  contain: layout style paint;
+}
+
+/* Below-the-fold region containment with graceful fallback */
+.below-fold-region {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 4rem;
+}
+
+@supports not (content-visibility: auto) {
+  .below-fold-region {
+    contain: layout style paint;
+  }
+}
+
+/* Swiss Technical precision range slider with CSS custom-property fill (--slider-pct) */
 input[type="range"].swiss-slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
-  background: #e2e6ee;
+  min-block-size: 1.75rem;
+  padding-block: 0.625rem;
+  background: transparent;
   border-radius: 0;
-  outline: none;
   cursor: pointer;
+}
+
+input[type="range"].swiss-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    var(--slider-fill, var(--slider-fill-default)) 0%,
+    var(--slider-fill, var(--slider-fill-default)) var(--slider-pct, 0%),
+    var(--slider-track) var(--slider-pct, 0%),
+    var(--slider-track) 100%
+  );
+  border-radius: 0;
 }
 
 input[type="range"].swiss-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 11px;
-  height: 18px;
-  background: #0f172a;
-  border: 1px solid #0f172a;
+  width: 12px;
+  height: 20px;
+  margin-top: -8px;
+  background: var(--slider-fill, var(--slider-fill-default));
+  border: 1px solid var(--slider-fill, var(--slider-fill-default));
   border-radius: 1px;
   cursor: ew-resize;
-  transition: background-color 120ms ease, transform 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 input[type="range"].swiss-slider::-webkit-slider-thumb:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: var(--accent-rpm);
+  border-color: var(--accent-rpm);
+}
+
+input[type="range"].swiss-slider::-moz-range-track {
+  height: 4px;
+  background: var(--slider-track);
+  border-radius: 0;
+}
+
+input[type="range"].swiss-slider::-moz-range-progress {
+  height: 4px;
+  background: var(--slider-fill, var(--slider-fill-default));
 }
 
 input[type="range"].swiss-slider::-moz-range-thumb {
-  width: 11px;
-  height: 18px;
-  background: #0f172a;
-  border: 1px solid #0f172a;
+  width: 12px;
+  height: 20px;
+  background: var(--slider-fill, var(--slider-fill-default));
+  border: 1px solid var(--slider-fill, var(--slider-fill-default));
   border-radius: 1px;
   cursor: ew-resize;
 }
 
-input[type="range"].swiss-slider-orange::-webkit-slider-thumb {
-  background: #ea580c;
-  border-color: #ea580c;
+input[type="range"].swiss-slider-orange {
+  --slider-fill: var(--accent-sp-bright);
 }
 
-input[type="range"].swiss-slider-orange::-moz-range-thumb {
-  background: #ea580c;
-  border-color: #ea580c;
+input[type="range"].swiss-slider-orange::-webkit-slider-thumb:hover {
+  background: var(--accent-sp);
+  border-color: var(--accent-sp);
 }
 
-/* Authentic 16x2 LCD subtle pixel matrix */
+/* Native <details> disclosure styling & progressive height animation */
+details.swiss-disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+details.swiss-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.swiss-disclosure > summary .disclosure-chevron {
+  transform: rotate(0deg);
+}
+
+details.swiss-disclosure[open] > summary .disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+details.swiss-disclosure::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+
+details.swiss-disclosure:not([open])::details-content {
+  block-size: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  details.swiss-disclosure > summary .disclosure-chevron {
+    transition: transform 180ms ease;
+  }
+
+  details.swiss-disclosure::details-content {
+    transition: block-size, content-visibility, display;
+    transition-duration: 220ms;
+    transition-timing-function: ease-in-out;
+    transition-behavior: allow-discrete;
+  }
+}
+
+/* Authentic 16x2 LCD subtle pixel matrix (hardware LCD always stays dark green) */
 .lcd-matrix {
-  background-color: #112217;
-  background-image: radial-gradient(rgba(134, 239, 172, 0.08) 1px, transparent 0);
+  color-scheme: dark;
+  background-color: #0e1f14;
+  background-image: radial-gradient(rgba(134, 239, 172, 0.09) 1px, transparent 0);
   background-size: 4px 4px;
+}
+
+/* Coarse pointer ergonomics: ensure comfortable touch target heights */
+@media (pointer: coarse) {
+  input[type="range"].swiss-slider {
+    min-block-size: 2.5rem;
+    padding-block: 1rem;
+  }
+
+  input[type="range"].swiss-slider::-webkit-slider-thumb {
+    width: 18px;
+    height: 26px;
+    margin-top: -11px;
+  }
+
+  input[type="range"].swiss-slider::-moz-range-thumb {
+    width: 18px;
+    height: 26px;
+  }
+}
+
+/* Windows Forced Colors (High Contrast) support */
+@media (forced-colors: active) {
+  :where(a[href], button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .lcd-matrix {
+    border: 2px solid CanvasText;
+    background-image: none;
+  }
+
+  input[type="range"].swiss-slider::-webkit-slider-thumb,
+  input[type="range"].swiss-slider::-moz-range-thumb {
+    background: Highlight;
+    border: 2px solid CanvasText;
+  }
 }

@@ -13,6 +13,7 @@ export interface TelemetrySample {
   error: number;
   pwm: number;
   voltage: number;
+  currentAmp: number;
   kp: number;
   ki: number;
   kd: number;

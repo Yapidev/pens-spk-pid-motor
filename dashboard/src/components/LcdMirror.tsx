@@ -16,6 +16,7 @@ export const LcdMirror = React.memo(function LcdMirror({
 }: LcdMirrorProps) {
   const pwm = latest?.pwm ?? 0;
   const voltage = latest?.voltage ?? 24.4;
+  const currentAmp = latest?.currentAmp ?? 0;
   const rpm = latest?.rpm ?? 0;
   const sp = latest?.setpoint ?? 0;
   const err = latest?.error ?? 0;
@@ -36,6 +37,8 @@ export const LcdMirror = React.memo(function LcdMirror({
 
   const dutyPct = (pwm / 255) * 100;
   const vEff = (voltage * pwm) / 255;
+  const powerWatt = vEff * currentAmp;
+  const isOverCurrent = currentAmp >= 4.5;
   const isSaturated = pwm >= 250;
   const withinTol =
     mode === 1 && runState === 1 && Math.abs(err) <= Math.max(sp * 0.02, 1.5);
@@ -104,8 +107,8 @@ export const LcdMirror = React.memo(function LcdMirror({
         </div>
       </div>
 
-      {/* 5 Precision Telemetry KPI Cells */}
-      <div className="grid grid-cols-2 gap-px bg-[var(--border-hairline)] sm:grid-cols-5 lg:col-span-8 xl:col-span-9">
+      {/* 6 Precision Telemetry KPI Cells */}
+      <div className="grid grid-cols-2 gap-px bg-[var(--border-hairline)] sm:grid-cols-3 2xl:grid-cols-6 lg:col-span-8 xl:col-span-9">
         {/* 1. Actual RPM */}
         <div className="flex flex-col justify-between bg-[var(--bg-surface)] p-3.5">
           <div className="flex items-center justify-between gap-1">
@@ -224,7 +227,7 @@ export const LcdMirror = React.memo(function LcdMirror({
         </div>
 
         {/* 5. Supply Voltage */}
-        <div className="col-span-2 flex flex-col justify-between bg-[var(--bg-surface)] p-3.5 sm:col-span-1">
+        <div className="flex flex-col justify-between bg-[var(--bg-surface)] p-3.5">
           <div className="flex items-center justify-between gap-1">
             <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
               BUS VOLTAGE
@@ -239,6 +242,39 @@ export const LcdMirror = React.memo(function LcdMirror({
           </div>
           <div className="mt-1.5 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-muted)]">
             V_arm ≈ {vEff.toFixed(1)} V
+          </div>
+        </div>
+
+        {/* 6. Motor Current (ACS712 5A) */}
+        <div className="flex flex-col justify-between bg-[var(--bg-surface)] p-3.5">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
+              CURRENT (I)
+            </span>
+            <span
+              className={`font-mono text-[0.6875rem] ${
+                isOverCurrent
+                  ? "font-semibold text-[var(--accent-danger-ink)]"
+                  : "text-[var(--ink-muted)]"
+              }`}
+            >
+              {isOverCurrent ? "OVER" : "ACS712"}
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span
+              className={`font-mono text-2xl font-semibold tracking-tight tabular-nums xl:text-3xl ${
+                isOverCurrent
+                  ? "text-[var(--accent-danger-ink)]"
+                  : "text-[var(--ink-primary)]"
+              }`}
+            >
+              {currentAmp.toFixed(2)}
+            </span>
+            <span className="font-mono text-xs text-[var(--ink-muted)]">A</span>
+          </div>
+          <div className="mt-1.5 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-muted)]">
+            P ≈ {powerWatt.toFixed(1)} W
           </div>
         </div>
       </div>

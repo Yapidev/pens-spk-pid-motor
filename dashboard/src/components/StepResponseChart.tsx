@@ -18,7 +18,7 @@ interface StepResponseChartProps {
 }
 
 type TimeWindow = 10 | 20 | 30 | 60 | 0; // 0 = ALL
-type SubTraceMode = "pwm" | "error";
+type SubTraceMode = "pwm" | "error" | "current";
 
 interface ChartLayout {
   padLeft: number;
@@ -351,6 +351,8 @@ export const StepResponseChart = React.memo(function StepResponseChart({
       mainTop + mainH - (Math.max(0, Math.min(yMaxRpm, rpm)) / yMaxRpm) * mainH;
     const yPwmOf = (pwm: number) =>
       subTop + subH - (Math.max(0, Math.min(255, pwm)) / 255) * subH;
+    const yCurOf = (amp: number) =>
+      subTop + subH - (Math.max(0, Math.min(5, amp)) / 5) * subH;
     const yErrOf = (err: number) =>
       subTop +
       subH / 2 -
@@ -432,6 +434,17 @@ export const StepResponseChart = React.memo(function StepResponseChart({
         ctx.fillStyle = pal.inkMuted;
         ctx.fillText(String(v), padLeft - 8, y);
       }
+    } else if (st === "current") {
+      for (const v of [0, 2.5, 5]) {
+        const y = Math.round(yCurOf(v)) + 0.5;
+        ctx.strokeStyle = v === 0 ? pal.axis : pal.grid;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(padLeft + plotW, y);
+        ctx.stroke();
+        ctx.fillStyle = pal.inkMuted;
+        ctx.fillText(`${v}A`, padLeft - 8, y);
+      }
     } else {
       for (const v of [-errAbsMax, 0, errAbsMax]) {
         const y = Math.round(yErrOf(v)) + 0.5;
@@ -451,7 +464,11 @@ export const StepResponseChart = React.memo(function StepResponseChart({
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(
-      st === "pwm" ? "ACTUATOR EFFORT (PWM 0–255)" : "TRACKING ERROR (SP − RPM)",
+      st === "pwm"
+        ? "ACTUATOR EFFORT (PWM 0–255)"
+        : st === "current"
+          ? "MOTOR CURRENT (ACS712 0–5A)"
+          : "TRACKING ERROR (SP − RPM)",
       padLeft + 6,
       subTop + 4
     );
@@ -553,6 +570,34 @@ export const StepResponseChart = React.memo(function StepResponseChart({
         }
         ctx.strokeStyle = pal.pwmStroke;
         ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else if (st === "current") {
+        ctx.beginPath();
+        for (let i = startIdx; i < endIdx; i++) {
+          const s = source[i];
+          const x = xOf(s.elapsedSec);
+          const y = yCurOf(s.currentAmp);
+          if (i === startIdx) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        const lastX = xOf(source[endIdx - 1].elapsedSec);
+        const firstX = xOf(source[startIdx].elapsedSec);
+        ctx.lineTo(lastX, subTop + subH);
+        ctx.lineTo(firstX, subTop + subH);
+        ctx.closePath();
+        ctx.fillStyle = pal.bandFill;
+        ctx.fill();
+
+        ctx.beginPath();
+        for (let i = startIdx; i < endIdx; i++) {
+          const s = source[i];
+          const x = xOf(s.elapsedSec);
+          const y = yCurOf(s.currentAmp);
+          if (i === startIdx) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = pal.ok;
+        ctx.lineWidth = 1.6;
         ctx.stroke();
       } else {
         ctx.beginPath();
@@ -890,6 +935,18 @@ export const StepResponseChart = React.memo(function StepResponseChart({
             >
               ERROR
             </button>
+            <button
+              type="button"
+              aria-pressed={subTrace === "current"}
+              onClick={() => setSubTrace("current")}
+              className={`min-h-7 px-2.5 py-1 transition-colors ${
+                subTrace === "current"
+                  ? "bg-[var(--bg-surface)] font-semibold text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
+                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+              }`}
+            >
+              I (A)
+            </button>
           </div>
 
           {/* Time Window */}
@@ -982,7 +1039,9 @@ export const StepResponseChart = React.memo(function StepResponseChart({
             <div className="pointer-events-none absolute right-3 top-2 border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 px-2.5 py-1.5 font-mono text-xs tabular-nums shadow-sm">
               <div className="mb-0.5 flex items-center justify-between gap-4 border-b border-[var(--border-hairline)] pb-0.5 text-[0.6875rem] text-[var(--ink-muted)]">
                 <span>t = {hoveredSample.elapsedSec.toFixed(2)} s</span>
-                <span>{hoveredSample.voltage.toFixed(1)} V</span>
+                <span>
+                  {hoveredSample.voltage.toFixed(1)} V · {hoveredSample.currentAmp.toFixed(2)} A
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                 <span className="text-[var(--accent-sp)]">SP: {hoveredSample.setpoint.toFixed(1)}</span>

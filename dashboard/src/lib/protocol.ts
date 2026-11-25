@@ -40,6 +40,7 @@ export function parseSerialLine(
       const kd = Number.parseFloat(parts[9]);
       const modeVal = Number.parseInt(parts[10], 10);
       const runVal = Number.parseInt(parts[11], 10);
+      const currentAmp = parts.length >= 13 ? Number.parseFloat(parts[12]) : 0;
 
       if (
         Number.isFinite(timestampMs) &&
@@ -63,6 +64,7 @@ export function parseSerialLine(
             error: Number.isFinite(error) ? error : setpoint - rpm,
             pwm: Math.max(0, Math.min(255, pwm)),
             voltage: Number.isFinite(voltage) ? voltage : 0,
+            currentAmp: Number.isFinite(currentAmp) ? Math.max(0, currentAmp) : 0,
             kp: Number.isFinite(kp) ? kp : 0,
             ki: Number.isFinite(ki) ? ki : 0,
             kd: Number.isFinite(kd) ? kd : 0,
@@ -108,6 +110,7 @@ export function parseSerialLine(
       const rpm = Number(obj.rpm ?? obj.actual ?? 0);
       const pwm = Math.round(Number(obj.pwm ?? 0));
       const voltage = Number(obj.v ?? obj.volt ?? obj.voltage ?? 24.4);
+      const currentAmp = Number(obj.i ?? obj.cur ?? obj.current ?? 0);
       const kp = Number(obj.kp ?? 0);
       const ki = Number(obj.ki ?? 0);
       const kd = Number(obj.kd ?? 0);
@@ -128,6 +131,7 @@ export function parseSerialLine(
             error: Number.isFinite(Number(obj.err)) ? Number(obj.err) : setpoint - rpm,
             pwm: Math.max(0, Math.min(255, pwm)),
             voltage,
+            currentAmp: Number.isFinite(currentAmp) ? Math.max(0, currentAmp) : 0,
             kp,
             ki,
             kd,

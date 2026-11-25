@@ -35,6 +35,7 @@ export class MotorPlantSimulator {
   private currentNorm = 0;    // Arus jangkar ternormalisasi
   private filteredRpm = 0;    // Hasil filter EMA (alpha = 0.40)
   private supplyVoltage = 24.4;
+  private motorCurrentAmp = 0; // Simulasi sensor arus ACS712 5A (A)
   private loadTorqueRpm = 0;  // Gangguan beban mekanis eksternal sementara
   private loadDecayTicks = 0;
 
@@ -189,6 +190,7 @@ export class MotorPlantSimulator {
           this.omegaRpm = 0;
           this.currentNorm = 0;
           this.filteredRpm = 0;
+          this.motorCurrentAmp = 0;
           this.simTimeMs = 0;
           this.resetPid();
           this.emit("ACK,CMD,RESET");
@@ -292,6 +294,19 @@ export class MotorPlantSimulator {
       this.omegaRpm = Math.max(0, this.omegaRpm + dOmega * subDt);
     }
 
+    // Simulasi arus jangkar ACS712 5A (no-load + inrush akselerasi + beban torsi)
+    const noLoadAmp = this.currentPwm > 0 ? 0.16 + 0.0028 * this.currentPwm : 0;
+    const accelAmp = Math.max(0, driveInput - this.omegaRpm) * 0.0085;
+    const loadAmp = this.loadTorqueRpm * 0.022;
+    const targetCurrent =
+      this.currentPwm > 0
+        ? Math.max(0, Math.min(5.0, noLoadAmp + accelAmp + loadAmp + (Math.random() - 0.5) * 0.03))
+        : 0;
+    this.motorCurrentAmp = 0.25 * targetCurrent + 0.75 * this.motorCurrentAmp;
+    if (this.currentPwm === 0 && this.motorCurrentAmp < 0.02) {
+      this.motorCurrentAmp = 0;
+    }
+
     // Kuantisasi & jitter kecil encoder (sekitar ±0.45 RPM)
     const encoderNoise = this.omegaRpm > 0.5 ? (Math.random() - 0.5) * 0.9 : 0;
     const measuredRpm = Math.max(0, this.omegaRpm + encoderNoise);
@@ -330,6 +345,7 @@ export class MotorPlantSimulator {
       this.kd.toFixed(3),
       this.mode,
       runState,
+      this.motorCurrentAmp.toFixed(2),
     ].join(",");
 
     this.emit(line);

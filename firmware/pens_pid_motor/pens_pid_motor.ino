@@ -465,14 +465,14 @@ void renderLcd() {
   dtostrf(g_supplyVoltage, 4, 1, vStr);
 
   if (g_lcdPage == PAGE_MONITOR) {
-    // Baris 0 (16 kar): "PWM:185 V:24.4 P"  (P=PID, O=Open, S=Stop, !=ESTOP)
-    char badge = 'S';
+    // Baris 0 (16 kar): "PWM:185 24.4V CL"  (CL=Closed-Loop, OL=Open-Loop, ST=Stop, !!=ESTOP)
+    const char* badge = "ST";
     if (g_estopLatched) {
-      badge = '!';
+      badge = "!!";
     } else if (g_running) {
-      badge = (g_mode == MODE_CLOSED_PID) ? 'P' : 'O';
+      badge = (g_mode == MODE_CLOSED_PID) ? "CL" : "OL";
     }
-    snprintf(line0, sizeof(line0), "PWM:%3d V:%s %c", g_currentPwm, vStr, badge);
+    snprintf(line0, sizeof(line0), "PWM:%3d %sV %s", g_currentPwm, vStr, badge);
 
     // Baris 1 (16 kar): "RPM:148  SP:150 " atau "RPM:148  PW:180 "
     const int rpmInt = (int)(g_filteredRpm + 0.5f);

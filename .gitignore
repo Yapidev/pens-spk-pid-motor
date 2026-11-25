@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+dashboard/node_modules/
+
+# Next.js build output
+dashboard/.next/
+dashboard/out/
+dashboard/tsconfig.tsbuildinfo
+dashboard/next-env.d.ts
+
+# PlatformIO / Arduino build artifacts
+firmware/.pio/
+firmware/.vscode/
+*.hex
+*.elf
+
+# Logs & Environment
+*.log
+.env
+.env*.local
+
+# OS files
+.DS_Store
+Thumbs.db

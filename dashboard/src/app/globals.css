@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  --bg-canvas: #f5f5f3;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f0f1f4;
+  --border-hairline: #dfe2e8;
+  --border-strong: #c5cbd6;
+  --ink-primary: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #64748b;
+  --accent-sp: #ea580c;
+  --accent-rpm: #1d4ed8;
+  --accent-ok: #059669;
+  --accent-danger: #dc2626;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--ink-primary);
+    font-family: "Inter", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Swiss Technical precision range slider */
+input[type="range"].swiss-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #e2e6ee;
+  border-radius: 0;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].swiss-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 18px;
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  border-radius: 1px;
+  cursor: ew-resize;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+input[type="range"].swiss-slider::-webkit-slider-thumb:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+input[type="range"].swiss-slider::-moz-range-thumb {
+  width: 11px;
+  height: 18px;
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  border-radius: 1px;
+  cursor: ew-resize;
+}
+
+input[type="range"].swiss-slider-orange::-webkit-slider-thumb {
+  background: #ea580c;
+  border-color: #ea580c;
+}
+
+input[type="range"].swiss-slider-orange::-moz-range-thumb {
+  background: #ea580c;
+  border-color: #ea580c;
+}
+
+/* Authentic 16x2 LCD subtle pixel matrix */
+.lcd-matrix {
+  background-color: #112217;
+  background-image: radial-gradient(rgba(134, 239, 172, 0.08) 1px, transparent 0);
+  background-size: 4px 4px;
+}

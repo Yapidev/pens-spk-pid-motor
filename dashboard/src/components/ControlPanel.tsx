@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import {
-  ChevronDown,
   ChevronRight,
   OctagonAlert,
   Play,
@@ -21,13 +20,13 @@ import type {
 } from "@/types/telemetry";
 
 interface ControlPanelProps {
+  hydrated: boolean;
   connected: boolean;
   connectionMode: ConnectionMode;
   activeMode: ControlMode;
   runState: RunState;
   activePid: PIDParams;
   activeSetpoint: number;
-  activePwm: number;
   draftPid: PIDParams;
   draftSetpoint: number;
   draftManualPwm: number;
@@ -60,9 +59,16 @@ const PID_PRESETS: PidPreset[] = [
   { name: "PID Fast", desc: "Cepat + OS", kp: 2.4, ki: 2.2, kd: 0.12 },
 ];
 
-const SP_QUICK_VALUES = [0, 60, 120, 180, 240];
+const SP_QUICK_VALUES = [0, 60, 120, 180, 240] as const;
+const PWM_QUICK_VALUES = [0, 64, 128, 192, 255] as const;
 
-export function ControlPanel({
+function sliderFillStyle(value: number, max: number): React.CSSProperties {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  return { "--slider-pct": `${pct.toFixed(1)}%` } as React.CSSProperties;
+}
+
+export const ControlPanel = React.memo(function ControlPanel({
+  hydrated,
   connected,
   connectionMode,
   activeMode,
@@ -85,8 +91,21 @@ export function ControlPanel({
   onApplyPpr,
   onInjectDisturbance,
 }: ControlPanelProps) {
-  const [calibOpen, setCalibOpen] = useState(false);
-  const [pprInput, setPprInput] = useState(String(pprValue));
+  const [pprInput, setPprInput] = useState(() => String(pprValue));
+  const [syncedPprProp, setSyncedPprProp] = useState(pprValue);
+
+  if (pprValue !== syncedPprProp) {
+    setSyncedPprProp(pprValue);
+    setPprInput(String(pprValue));
+  }
+
+  const spInputId = useId();
+  const pwmInputId = useId();
+  const kpInputId = useId();
+  const kiInputId = useId();
+  const kdInputId = useId();
+  const liveCheckboxId = useId();
+  const pprInputId = useId();
 
   const pidDirty =
     Math.abs(draftPid.kp - activePid.kp) > 0.004 ||
@@ -95,56 +114,64 @@ export function ControlPanel({
 
   const isRunning = runState === 1;
   const isEstop = runState === 2;
+  const isDisabled = hydrated && !connected;
 
   const adjustPidField = (field: keyof PIDParams, delta: number, max: number) => {
-    const raw = Math.max(0, Math.min(max, Number((draftPid[field] + delta).toFixed(3))));
+    const raw = Math.max(
+      0,
+      Math.min(max, Number((draftPid[field] + delta).toFixed(3)))
+    );
     onChangeDraftPid({ ...draftPid, [field]: raw }, true);
   };
 
   return (
-    <aside className="flex flex-col divide-y divide-[#dfe2e8] border border-[#dfe2e8] bg-white">
+    <aside
+      aria-label="Panel Kontrol dan Tuning PID"
+      className="panel-isolated flex flex-col divide-y divide-[var(--border-hairline)] border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
+    >
       {/* SECTION 1: EXECUTION & SAFETY */}
       <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0f172a]">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-primary)]">
             MOTOR EXECUTION &amp; SAFETY
-          </span>
-          <span className="font-mono text-[10px] text-[#64748b]">WRITE → MC</span>
+          </h2>
+          <span className="font-mono text-[0.6875rem] text-[var(--ink-muted)]">WRITE → MC</span>
         </div>
 
         <div className="grid grid-cols-3 gap-1.5">
           <button
             type="button"
-            disabled={!connected}
+            disabled={isDisabled}
+            aria-pressed={isRunning}
             onClick={() => onCommand("START")}
-            className={`flex h-9 items-center justify-center gap-1.5 border font-mono text-xs font-semibold transition-colors disabled:opacity-40 ${
+            className={`flex min-h-10 items-center justify-center gap-1.5 border px-2 py-2 font-mono text-xs font-semibold transition-colors disabled:opacity-45 ${
               isRunning
-                ? "border-[#059669] bg-[#059669] text-white"
-                : "border-[#0f172a] bg-[#0f172a] text-white hover:bg-[#1e293b]"
+                ? "border-[#047857] bg-[#047857] text-white"
+                : "border-[var(--btn-primary-bg)] bg-[var(--btn-primary-bg)] text-[var(--btn-primary-ink)] hover:bg-[var(--btn-primary-hover)]"
             }`}
           >
-            <Play className="h-3.5 w-3.5" />
+            <Play aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span>START</span>
           </button>
 
           <button
             type="button"
-            disabled={!connected}
+            disabled={isDisabled}
             onClick={() => onCommand("STOP")}
-            className="flex h-9 items-center justify-center gap-1.5 border border-[#dfe2e8] bg-white font-mono text-xs font-semibold text-[#0f172a] transition-colors hover:border-[#0f172a] hover:bg-[#f5f5f3] disabled:opacity-40"
+            className="flex min-h-10 items-center justify-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 py-2 font-mono text-xs font-semibold text-[var(--ink-primary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] disabled:opacity-45"
           >
-            <Square className="h-3.5 w-3.5" />
+            <Square aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span>STOP</span>
           </button>
 
           <button
             type="button"
-            disabled={!connected}
+            disabled={isDisabled}
             onClick={() => onCommand("RESET")}
-            className="flex h-9 items-center justify-center gap-1.5 border border-[#dfe2e8] bg-white font-mono text-xs font-semibold text-[#475569] transition-colors hover:border-[#0f172a] hover:text-[#0f172a] disabled:opacity-40"
+            className="flex min-h-10 items-center justify-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 py-2 font-mono text-xs font-semibold text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
             title="Reset integral PID, encoder, dan timer"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span>RESET</span>
           </button>
         </div>
@@ -152,65 +179,75 @@ export function ControlPanel({
         {/* Emergency Stop Button */}
         <button
           type="button"
-          disabled={!connected}
+          disabled={isDisabled}
           onClick={() => onCommand("ESTOP")}
-          className={`mt-2 flex h-11 w-full items-center justify-center gap-2 border-2 font-mono text-xs font-bold tracking-wider transition-colors disabled:opacity-40 ${
+          className={`mt-2 flex min-h-11 w-full items-center justify-center gap-2 border-2 px-3 py-2 font-mono text-xs font-bold tracking-wider transition-colors disabled:opacity-45 ${
             isEstop
               ? "border-[#991b1b] bg-[#991b1b] text-white"
               : "border-[#dc2626] bg-[#dc2626] text-white hover:bg-[#b91c1c]"
           }`}
         >
-          <OctagonAlert className="h-4 w-4" />
-          <span>{isEstop ? "E-STOP LATCHED — KLIK START UNTUK LANJUT" : "EMERGENCY STOP (ESC)"}</span>
+          <OctagonAlert aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <span>
+            {isEstop
+              ? "E-STOP LATCHED — KLIK START UNTUK LANJUT"
+              : "EMERGENCY STOP (ESC)"}
+          </span>
         </button>
 
         {/* Simulator-Only Load Disturbance Test */}
-        {connectionMode === "simulator" && onInjectDisturbance && (
+        {connectionMode === "simulator" && onInjectDisturbance ? (
           <button
             type="button"
-            disabled={!connected || !isRunning}
+            disabled={hydrated && (!connected || !isRunning)}
             onClick={onInjectDisturbance}
-            className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 border border-amber-300 bg-amber-50 font-mono text-[11px] font-medium text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40"
+            className="mt-2 flex min-h-9 w-full items-center justify-center gap-1.5 border border-[var(--accent-warn-border)] bg-[var(--accent-warn-bg)] px-3 py-1.5 font-mono text-xs font-medium text-[var(--accent-warn)] transition-colors hover:bg-[var(--accent-warn-bg-hover)] disabled:opacity-45"
             title="Simulasikan beban mekanis sesaat (2.5s) untuk menguji disturbance rejection PID"
           >
-            <Zap className="h-3.5 w-3.5" />
+            <Zap aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             <span>Simulasi Gangguan Beban (+Torsi 2.5s)</span>
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* SECTION 2: CONTROL MODE & SETPOINT / MANUAL PWM */}
       <div className="p-4">
-        <div className="mb-2.5 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0f172a]">
+        <div className="mb-2.5 flex items-center justify-between gap-2">
+          <h2 className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-primary)]">
             CONTROL MODE
-          </span>
-          <span className="font-mono text-[10px] text-[#64748b]">
+          </h2>
+          <span className="font-mono text-[0.6875rem] text-[var(--ink-muted)]">
             {activeMode === 1 ? "CLOSED-LOOP" : "OPEN-LOOP"}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 border border-[#dfe2e8] bg-[#f5f5f3] p-0.5 text-xs font-medium">
+        <div
+          role="group"
+          aria-label="Mode kendali motor"
+          className="grid grid-cols-2 border border-[var(--border-control)] bg-[var(--bg-subtle)] p-0.5 text-xs font-medium"
+        >
           <button
             type="button"
-            disabled={!connected}
+            aria-pressed={activeMode === 1}
+            disabled={isDisabled}
             onClick={() => onSwitchMode(1)}
-            className={`py-1.5 transition-colors disabled:opacity-50 ${
+            className={`min-h-9 px-2 py-1.5 transition-colors disabled:opacity-50 ${
               activeMode === 1
-                ? "bg-[#0f172a] font-semibold text-white"
-                : "text-[#475569] hover:text-[#0f172a]"
+                ? "bg-[var(--btn-primary-bg)] font-semibold text-[var(--btn-primary-ink)]"
+                : "text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
             }`}
           >
             Closed-Loop PID
           </button>
           <button
             type="button"
-            disabled={!connected}
+            aria-pressed={activeMode === 0}
+            disabled={isDisabled}
             onClick={() => onSwitchMode(0)}
-            className={`py-1.5 transition-colors disabled:opacity-50 ${
+            className={`min-h-9 px-2 py-1.5 transition-colors disabled:opacity-50 ${
               activeMode === 0
-                ? "bg-[#0f172a] font-semibold text-white"
-                : "text-[#475569] hover:text-[#0f172a]"
+                ? "bg-[var(--btn-primary-bg)] font-semibold text-[var(--btn-primary-ink)]"
+                : "text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
             }`}
           >
             Open-Loop PWM
@@ -219,21 +256,23 @@ export function ControlPanel({
 
         {activeMode === 1 ? (
           <div className="mt-4">
-            <div className="mb-1.5 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
               <label
-                htmlFor="sp-input"
-                className="text-[11px] font-semibold text-[#0f172a]"
+                htmlFor={spInputId}
+                className="text-xs font-semibold text-[var(--ink-primary)]"
               >
                 Setpoint Kecepatan (SP)
               </label>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <input
-                  id="sp-input"
+                  id={spInputId}
+                  name="setpoint_rpm"
                   type="number"
+                  inputMode="numeric"
                   min={0}
                   max={500}
                   step={5}
-                  disabled={!connected}
+                  disabled={isDisabled}
                   value={draftSetpoint}
                   onChange={(e) => {
                     const v = Number.parseFloat(e.target.value);
@@ -241,51 +280,62 @@ export function ControlPanel({
                       onChangeSetpoint(Math.max(0, Math.min(500, v)));
                     }
                   }}
-                  className="w-20 border border-[#dfe2e8] bg-white px-2 py-0.5 text-right font-mono text-sm font-semibold tabular-nums text-[#ea580c] outline-none focus:border-[#ea580c]"
+                  className="min-h-8 w-20 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 py-1 text-right font-mono text-sm font-semibold tabular-nums text-[var(--accent-sp)] focus:border-[var(--accent-sp-bright)]"
                 />
-                <span className="font-mono text-[11px] text-[#64748b]">RPM</span>
+                <span className="font-mono text-xs text-[var(--ink-muted)]">RPM</span>
               </div>
             </div>
 
             <input
               type="range"
+              aria-label="Slider Setpoint Kecepatan (RPM)"
+              aria-valuetext={`${draftSetpoint} RPM`}
               min={0}
               max={320}
               step={5}
-              disabled={!connected}
+              disabled={isDisabled}
               value={Math.min(320, draftSetpoint)}
+              style={sliderFillStyle(Math.min(320, draftSetpoint), 320)}
               onChange={(e) => onChangeSetpoint(Number(e.target.value))}
-              className="swiss-slider swiss-slider-orange my-2"
+              className="swiss-slider swiss-slider-orange my-1"
             />
 
             {/* Quick SP Step Presets */}
-            <div className="mt-2 grid grid-cols-5 gap-1">
-              {SP_QUICK_VALUES.map((spVal) => (
-                <button
-                  key={spVal}
-                  type="button"
-                  disabled={!connected}
-                  onClick={() => onChangeSetpoint(spVal)}
-                  className={`border py-1 font-mono text-[11px] tabular-nums transition-colors disabled:opacity-40 ${
-                    Math.abs(activeSetpoint - spVal) < 1
-                      ? "border-[#ea580c] bg-orange-50 font-semibold text-[#ea580c]"
-                      : "border-[#dfe2e8] bg-white text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a]"
-                  }`}
-                >
-                  {spVal}
-                </button>
-              ))}
+            <div
+              role="group"
+              aria-label="Preset cepat Setpoint RPM"
+              className="mt-2 grid grid-cols-5 gap-1"
+            >
+              {SP_QUICK_VALUES.map((spVal) => {
+                const isActiveSp = Math.abs(activeSetpoint - spVal) < 1;
+                return (
+                  <button
+                    key={spVal}
+                    type="button"
+                    aria-pressed={isActiveSp}
+                    disabled={isDisabled}
+                    onClick={() => onChangeSetpoint(spVal)}
+                    className={`min-h-8 border py-1 font-mono text-xs tabular-nums transition-colors disabled:opacity-45 ${
+                      isActiveSp
+                        ? "border-[var(--accent-sp-bright)] bg-[var(--accent-sp-bg)] font-semibold text-[var(--accent-sp)]"
+                        : "border-[var(--border-control)] bg-[var(--bg-surface)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
+                    }`}
+                  >
+                    {spVal}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Dedicated Step Test Trigger */}
             <button
               type="button"
-              disabled={!connected}
+              disabled={isDisabled}
               onClick={() => onTriggerStepTest(draftSetpoint > 0 ? draftSetpoint : 150)}
-              className="mt-2.5 flex h-8 w-full items-center justify-center gap-1.5 border border-[#ea580c] bg-orange-50/70 font-mono text-[11px] font-semibold text-[#c2410c] transition-colors hover:bg-orange-100 disabled:opacity-40"
+              className="mt-2.5 flex min-h-9 w-full items-center justify-center gap-1.5 border border-[var(--accent-sp-bright)] bg-[var(--accent-sp-bg)] px-3 py-1.5 font-mono text-xs font-semibold text-[var(--accent-sp)] transition-colors hover:bg-[var(--accent-sp-bg-hover)] disabled:opacity-45"
               title="Mulai pengujian respon step baru ke nilai Setpoint aktif"
             >
-              <Sliders className="h-3.5 w-3.5" />
+              <Sliders aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
               <span>
                 Trigger Step Test (→ {draftSetpoint > 0 ? draftSetpoint : 150} RPM)
               </span>
@@ -293,21 +343,23 @@ export function ControlPanel({
           </div>
         ) : (
           <div className="mt-4">
-            <div className="mb-1.5 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
               <label
-                htmlFor="pwm-input"
-                className="text-[11px] font-semibold text-[#0f172a]"
+                htmlFor={pwmInputId}
+                className="text-xs font-semibold text-[var(--ink-primary)]"
               >
                 Manual PWM Output
               </label>
               <div className="flex items-center gap-1.5">
                 <input
-                  id="pwm-input"
+                  id={pwmInputId}
+                  name="manual_pwm"
                   type="number"
+                  inputMode="numeric"
                   min={0}
                   max={255}
                   step={5}
-                  disabled={!connected}
+                  disabled={isDisabled}
                   value={draftManualPwm}
                   onChange={(e) => {
                     const v = Number.parseInt(e.target.value, 10);
@@ -315,9 +367,9 @@ export function ControlPanel({
                       onChangeManualPwm(Math.max(0, Math.min(255, v)));
                     }
                   }}
-                  className="w-20 border border-[#dfe2e8] bg-white px-2 py-0.5 text-right font-mono text-sm font-semibold tabular-nums text-[#0f172a] outline-none focus:border-[#0f172a]"
+                  className="min-h-8 w-20 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 py-1 text-right font-mono text-sm font-semibold tabular-nums text-[var(--ink-primary)] focus:border-[var(--border-strong)]"
                 />
-                <span className="font-mono text-[11px] text-[#64748b]">
+                <span className="font-mono text-xs text-[var(--ink-muted)]">
                   ({Math.round((draftManualPwm / 255) * 100)}%)
                 </span>
               </div>
@@ -325,23 +377,35 @@ export function ControlPanel({
 
             <input
               type="range"
+              aria-label="Slider Manual PWM Output"
+              aria-valuetext={`${draftManualPwm} dari 255 (${Math.round((draftManualPwm / 255) * 100)}%)`}
               min={0}
               max={255}
               step={1}
-              disabled={!connected}
+              disabled={isDisabled}
               value={draftManualPwm}
+              style={sliderFillStyle(draftManualPwm, 255)}
               onChange={(e) => onChangeManualPwm(Number(e.target.value))}
-              className="swiss-slider my-2"
+              className="swiss-slider my-1"
             />
 
-            <div className="mt-2 grid grid-cols-5 gap-1">
-              {[0, 64, 128, 192, 255].map((p) => (
+            <div
+              role="group"
+              aria-label="Preset cepat Duty Cycle PWM"
+              className="mt-2 grid grid-cols-5 gap-1"
+            >
+              {PWM_QUICK_VALUES.map((p) => (
                 <button
                   key={p}
                   type="button"
-                  disabled={!connected}
+                  aria-pressed={Math.abs(draftManualPwm - p) <= 2}
+                  disabled={isDisabled}
                   onClick={() => onChangeManualPwm(p)}
-                  className="border border-[#dfe2e8] bg-white py-1 font-mono text-[11px] tabular-nums text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a] disabled:opacity-40"
+                  className={`min-h-8 border py-1 font-mono text-xs tabular-nums transition-colors disabled:opacity-45 ${
+                    Math.abs(draftManualPwm - p) <= 2
+                      ? "border-[var(--border-strong)] bg-[var(--bg-subtle)] font-semibold text-[var(--ink-primary)]"
+                      : "border-[var(--border-control)] bg-[var(--bg-surface)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
+                  }`}
                 >
                   {Math.round((p / 255) * 100)}%
                 </button>
@@ -353,50 +417,63 @@ export function ControlPanel({
 
       {/* SECTION 3: PID GAIN TUNING */}
       <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-start justify-between gap-2">
           <div>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0f172a]">
+            <h2 className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-primary)]">
               PID PARAMETER TUNING
-            </span>
-            <div className="mt-0.5 font-mono text-[10px] tabular-nums text-[#64748b]">
+            </h2>
+            <div className="mt-0.5 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-muted)]">
               MC: Kp={activePid.kp.toFixed(2)} · Ki={activePid.ki.toFixed(2)} · Kd=
               {activePid.kd.toFixed(2)}
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[#475569]">
+          <div className="flex items-center gap-1.5 pt-0.5 text-xs text-[var(--ink-secondary)]">
             <input
+              id={liveCheckboxId}
               type="checkbox"
               checked={autoSendPid}
               onChange={(e) => onToggleAutoSendPid(e.target.checked)}
-              className="h-3.5 w-3.5 accent-[#0f172a]"
+              className="h-4 w-4 cursor-pointer accent-[var(--accent-rpm)]"
             />
-            <span>Live</span>
-          </label>
+            <label htmlFor={liveCheckboxId} className="cursor-pointer select-none font-medium">
+              Live
+            </label>
+          </div>
         </div>
 
-        <div className="space-y-3.5">
+        <div className="space-y-3">
           {/* Kp */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-xs font-semibold text-[#0f172a]">
-                Kp <span className="font-sans text-[10px] font-normal text-[#64748b]">(Proportional)</span>
-              </span>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label
+                htmlFor={kpInputId}
+                className="font-mono text-xs font-semibold text-[var(--ink-primary)]"
+              >
+                Kp{" "}
+                <span className="font-sans text-[0.6875rem] font-normal text-[var(--ink-muted)]">
+                  (Proportional)
+                </span>
+              </label>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Kurangi Kp sebesar 0.05"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("kp", -0.05, 10)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   −
                 </button>
                 <input
+                  id={kpInputId}
+                  name="pid_kp"
                   type="number"
+                  inputMode="decimal"
                   step={0.05}
                   min={0}
                   max={50}
-                  disabled={!connected}
+                  disabled={isDisabled}
                   value={draftPid.kp}
                   onChange={(e) => {
                     const v = Number.parseFloat(e.target.value);
@@ -404,13 +481,14 @@ export function ControlPanel({
                       onChangeDraftPid({ ...draftPid, kp: Math.max(0, v) });
                     }
                   }}
-                  className="h-6 w-16 border border-[#dfe2e8] px-1.5 text-right font-mono text-xs tabular-nums text-[#0f172a] outline-none focus:border-[#0f172a]"
+                  className="min-h-8 w-16 border border-[var(--border-control)] bg-[var(--bg-surface)] px-1.5 text-right font-mono text-xs tabular-nums text-[var(--ink-primary)] focus:border-[var(--border-strong)]"
                 />
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Tambah Kp sebesar 0.05"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("kp", 0.05, 10)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   +
                 </button>
@@ -418,11 +496,14 @@ export function ControlPanel({
             </div>
             <input
               type="range"
+              aria-label="Slider Kp Proportional"
+              aria-valuetext={`Kp ${draftPid.kp.toFixed(2)}`}
               min={0}
               max={6}
               step={0.05}
-              disabled={!connected}
+              disabled={isDisabled}
               value={Math.min(6, draftPid.kp)}
+              style={sliderFillStyle(Math.min(6, draftPid.kp), 6)}
               onChange={(e) =>
                 onChangeDraftPid({ ...draftPid, kp: Number(e.target.value) })
               }
@@ -432,25 +513,35 @@ export function ControlPanel({
 
           {/* Ki */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-xs font-semibold text-[#0f172a]">
-                Ki <span className="font-sans text-[10px] font-normal text-[#64748b]">(Integral)</span>
-              </span>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label
+                htmlFor={kiInputId}
+                className="font-mono text-xs font-semibold text-[var(--ink-primary)]"
+              >
+                Ki{" "}
+                <span className="font-sans text-[0.6875rem] font-normal text-[var(--ink-muted)]">
+                  (Integral)
+                </span>
+              </label>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Kurangi Ki sebesar 0.05"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("ki", -0.05, 10)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   −
                 </button>
                 <input
+                  id={kiInputId}
+                  name="pid_ki"
                   type="number"
+                  inputMode="decimal"
                   step={0.05}
                   min={0}
                   max={50}
-                  disabled={!connected}
+                  disabled={isDisabled}
                   value={draftPid.ki}
                   onChange={(e) => {
                     const v = Number.parseFloat(e.target.value);
@@ -458,13 +549,14 @@ export function ControlPanel({
                       onChangeDraftPid({ ...draftPid, ki: Math.max(0, v) });
                     }
                   }}
-                  className="h-6 w-16 border border-[#dfe2e8] px-1.5 text-right font-mono text-xs tabular-nums text-[#0f172a] outline-none focus:border-[#0f172a]"
+                  className="min-h-8 w-16 border border-[var(--border-control)] bg-[var(--bg-surface)] px-1.5 text-right font-mono text-xs tabular-nums text-[var(--ink-primary)] focus:border-[var(--border-strong)]"
                 />
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Tambah Ki sebesar 0.05"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("ki", 0.05, 10)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   +
                 </button>
@@ -472,11 +564,14 @@ export function ControlPanel({
             </div>
             <input
               type="range"
+              aria-label="Slider Ki Integral"
+              aria-valuetext={`Ki ${draftPid.ki.toFixed(2)}`}
               min={0}
               max={6}
               step={0.05}
-              disabled={!connected}
+              disabled={isDisabled}
               value={Math.min(6, draftPid.ki)}
+              style={sliderFillStyle(Math.min(6, draftPid.ki), 6)}
               onChange={(e) =>
                 onChangeDraftPid({ ...draftPid, ki: Number(e.target.value) })
               }
@@ -486,25 +581,35 @@ export function ControlPanel({
 
           {/* Kd */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-xs font-semibold text-[#0f172a]">
-                Kd <span className="font-sans text-[10px] font-normal text-[#64748b]">(Derivative)</span>
-              </span>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label
+                htmlFor={kdInputId}
+                className="font-mono text-xs font-semibold text-[var(--ink-primary)]"
+              >
+                Kd{" "}
+                <span className="font-sans text-[0.6875rem] font-normal text-[var(--ink-muted)]">
+                  (Derivative)
+                </span>
+              </label>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Kurangi Kd sebesar 0.01"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("kd", -0.01, 5)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   −
                 </button>
                 <input
+                  id={kdInputId}
+                  name="pid_kd"
                   type="number"
+                  inputMode="decimal"
                   step={0.01}
                   min={0}
                   max={20}
-                  disabled={!connected}
+                  disabled={isDisabled}
                   value={draftPid.kd}
                   onChange={(e) => {
                     const v = Number.parseFloat(e.target.value);
@@ -512,13 +617,14 @@ export function ControlPanel({
                       onChangeDraftPid({ ...draftPid, kd: Math.max(0, v) });
                     }
                   }}
-                  className="h-6 w-16 border border-[#dfe2e8] px-1.5 text-right font-mono text-xs tabular-nums text-[#0f172a] outline-none focus:border-[#0f172a]"
+                  className="min-h-8 w-16 border border-[var(--border-control)] bg-[var(--bg-surface)] px-1.5 text-right font-mono text-xs tabular-nums text-[var(--ink-primary)] focus:border-[var(--border-strong)]"
                 />
                 <button
                   type="button"
-                  disabled={!connected}
+                  aria-label="Tambah Kd sebesar 0.01"
+                  disabled={isDisabled}
                   onClick={() => adjustPidField("kd", 0.01, 5)}
-                  className="h-6 w-6 border border-[#dfe2e8] font-mono text-xs text-[#475569] hover:border-[#0f172a] disabled:opacity-40"
+                  className="min-h-8 min-w-8 border border-[var(--border-control)] bg-[var(--bg-surface)] font-mono text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
                 >
                   +
                 </button>
@@ -526,11 +632,14 @@ export function ControlPanel({
             </div>
             <input
               type="range"
+              aria-label="Slider Kd Derivative"
+              aria-valuetext={`Kd ${draftPid.kd.toFixed(2)}`}
               min={0}
               max={1}
               step={0.01}
-              disabled={!connected}
+              disabled={isDisabled}
               value={Math.min(1, draftPid.kd)}
+              style={sliderFillStyle(Math.min(1, draftPid.kd), 1)}
               onChange={(e) =>
                 onChangeDraftPid({ ...draftPid, kd: Number(e.target.value) })
               }
@@ -542,108 +651,124 @@ export function ControlPanel({
         {/* Apply PID Button */}
         <button
           type="button"
-          disabled={!connected}
+          disabled={isDisabled}
           onClick={onApplyPid}
-          className={`mt-3.5 flex h-8 w-full items-center justify-center gap-1.5 border font-mono text-xs font-semibold transition-colors disabled:opacity-40 ${
+          className={`mt-3.5 flex min-h-9 w-full items-center justify-center gap-1.5 border px-3 py-1.5 font-mono text-xs font-semibold transition-colors disabled:opacity-45 ${
             pidDirty
               ? "border-[#1d4ed8] bg-[#1d4ed8] text-white hover:bg-[#1e40af]"
-              : "border-[#dfe2e8] bg-[#f5f5f3] text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a]"
+              : "border-[var(--border-control)] bg-[var(--bg-subtle)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
           }`}
         >
-          <Send className="h-3.5 w-3.5" />
+          <Send aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
           <span>{pidDirty ? "Kirim Parameter PID ke MC" : "PID Tersinkronisasi"}</span>
         </button>
 
         {/* Presets */}
-        <div className="mt-3">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748b]">
+        <div className="mt-3.5">
+          <h3 className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
             PRESET PRAKTIKUM
-          </div>
+          </h3>
           <div className="grid grid-cols-2 gap-1.5">
-            {PID_PRESETS.map((p) => (
-              <button
-                key={p.name}
-                type="button"
-                disabled={!connected}
-                onClick={() =>
-                  onChangeDraftPid({ kp: p.kp, ki: p.ki, kd: p.kd }, true)
-                }
-                className="border border-[#dfe2e8] bg-white px-2 py-1.5 text-left transition-colors hover:border-[#0f172a] hover:bg-[#f5f5f3] disabled:opacity-40"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-[#0f172a]">
-                    {p.name}
-                  </span>
-                  <span className="text-[9px] text-[#64748b]">{p.desc}</span>
-                </div>
-                <div className="mt-0.5 font-mono text-[10px] tabular-nums text-[#64748b]">
-                  {p.kp.toFixed(1)} / {p.ki.toFixed(2)} / {p.kd.toFixed(2)}
-                </div>
-              </button>
-            ))}
+            {PID_PRESETS.map((p) => {
+              const isActivePreset =
+                Math.abs(activePid.kp - p.kp) < 0.01 &&
+                Math.abs(activePid.ki - p.ki) < 0.01 &&
+                Math.abs(activePid.kd - p.kd) < 0.005;
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  aria-pressed={isActivePreset}
+                  disabled={isDisabled}
+                  onClick={() =>
+                    onChangeDraftPid({ kp: p.kp, ki: p.ki, kd: p.kd }, true)
+                  }
+                  className={`border px-2.5 py-2 text-left transition-colors disabled:opacity-45 ${
+                    isActivePreset
+                      ? "border-[var(--accent-rpm)] bg-[var(--accent-rpm-bg)]"
+                      : "border-[var(--border-control)] bg-[var(--bg-surface)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-semibold text-[var(--ink-primary)]">
+                      {p.name}
+                    </span>
+                    <span
+                      className={`text-[0.625rem] font-medium ${
+                        isActivePreset
+                          ? "font-semibold text-[var(--accent-rpm)]"
+                          : "text-[var(--ink-muted)]"
+                      }`}
+                    >
+                      {isActivePreset ? "AKTIF" : p.desc}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-secondary)]">
+                    {p.kp.toFixed(1)} / {p.ki.toFixed(2)} / {p.kd.toFixed(2)}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* SECTION 4: HARDWARE CALIBRATION (COLLAPSIBLE) */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setCalibOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#475569] hover:bg-[#fafaf9]"
-        >
-          <span>KALIBRASI ENCODER &amp; SYNC</span>
-          {calibOpen ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
+      {/* SECTION 4: HARDWARE CALIBRATION (Native <details> Disclosure, marker next to label) */}
+      <details className="swiss-disclosure">
+        <summary className="flex min-h-10 items-center gap-2 px-4 py-2.5 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-[var(--ink-secondary)] hover:bg-[var(--bg-surface-alt)]">
+          <span
+            aria-hidden="true"
+            className="disclosure-chevron inline-flex shrink-0 text-[var(--ink-muted)]"
+          >
             <ChevronRight className="h-3.5 w-3.5" />
-          )}
-        </button>
+          </span>
+          <span>KALIBRASI ENCODER &amp; SYNC</span>
+        </summary>
 
-        {calibOpen && (
-          <div className="border-t border-[#eceef2] px-4 py-3">
-            <div className="flex items-center gap-1.5">
-              <label
-                htmlFor="ppr-input"
-                className="shrink-0 font-mono text-[11px] text-[#475569]"
-              >
-                PPR:
-              </label>
-              <input
-                id="ppr-input"
-                type="number"
-                min={1}
-                max={10000}
-                step={1}
-                value={pprInput}
-                onChange={(e) => setPprInput(e.target.value)}
-                className="h-7 w-full border border-[#dfe2e8] px-2 font-mono text-xs tabular-nums text-[#0f172a] outline-none focus:border-[#0f172a]"
-              />
-              <button
-                type="button"
-                disabled={!connected}
-                onClick={() => {
-                  const v = Number.parseFloat(pprInput);
-                  if (Number.isFinite(v) && v >= 1) onApplyPpr(v);
-                }}
-                className="h-7 shrink-0 border border-[#0f172a] bg-[#0f172a] px-2.5 font-mono text-[11px] font-medium text-white hover:bg-[#1e293b] disabled:opacity-40"
-              >
-                Set
-              </button>
-            </div>
-
+        <div className="border-t border-[var(--border-hairline)] px-4 py-3">
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor={pprInputId}
+              className="shrink-0 font-mono text-xs font-medium text-[var(--ink-secondary)]"
+            >
+              PPR:
+            </label>
+            <input
+              id={pprInputId}
+              name="encoder_ppr"
+              type="number"
+              inputMode="decimal"
+              min={1}
+              max={10000}
+              step={1}
+              value={pprInput}
+              onChange={(e) => setPprInput(e.target.value)}
+              className="min-h-8 w-full border border-[var(--border-control)] bg-[var(--bg-surface)] px-2 py-1 font-mono text-xs tabular-nums text-[var(--ink-primary)] focus:border-[var(--border-strong)]"
+            />
             <button
               type="button"
-              disabled={!connected}
-              onClick={() => onCommand("SYNC")}
-              className="mt-2 flex h-7 w-full items-center justify-center gap-1.5 border border-[#dfe2e8] bg-white font-mono text-[11px] text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a] disabled:opacity-40"
+              disabled={isDisabled}
+              onClick={() => {
+                const v = Number.parseFloat(pprInput);
+                if (Number.isFinite(v) && v >= 1) onApplyPpr(v);
+              }}
+              className="min-h-8 shrink-0 border border-[var(--btn-primary-bg)] bg-[var(--btn-primary-bg)] px-3 py-1 font-mono text-xs font-semibold text-[var(--btn-primary-ink)] transition-colors hover:bg-[var(--btn-primary-hover)] disabled:opacity-45"
             >
-              <RefreshCw className="h-3 w-3" />
-              <span>Request Sync (CMD:SYNC)</span>
+              Set
             </button>
           </div>
-        )}
-      </div>
+
+          <button
+            type="button"
+            disabled={isDisabled}
+            onClick={() => onCommand("SYNC")}
+            className="mt-2 flex min-h-9 w-full items-center justify-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-xs font-medium text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)] disabled:opacity-45"
+          >
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span>Request Sync (CMD:SYNC)</span>
+          </button>
+        </div>
+      </details>
     </aside>
   );
-}
+});

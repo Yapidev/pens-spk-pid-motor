@@ -1,46 +1,274 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Pause, Play, RotateCcw } from "lucide-react";
+import {
+  getResolvedColorScheme,
+  subscribeColorSchemeChange,
+  type ResolvedColorScheme,
+} from "@/lib/theme";
 import type { StepMetrics, TelemetrySample } from "@/types/telemetry";
 
 interface StepResponseChartProps {
-  samples: TelemetrySample[];
+  samplesRef: React.RefObject<TelemetrySample[]>;
+  telemetryVersionRef: React.RefObject<number>;
   metrics: StepMetrics;
   onClearPlot: () => void;
+  onExportPngSuccess?: () => void;
 }
 
 type TimeWindow = 10 | 20 | 30 | 60 | 0; // 0 = ALL
 type SubTraceMode = "pwm" | "error";
 
-export function StepResponseChart({
-  samples,
+interface ChartLayout {
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  padBottom: number;
+  gap: number;
+  plotW: number;
+  mainH: number;
+  subH: number;
+  mainTop: number;
+  subTop: number;
+}
+
+interface ChartDomains {
+  tMin: number;
+  tMax: number;
+  yMaxRpm: number;
+  errAbsMax: number;
+}
+
+interface ChartPalette {
+  bg: string;
+  plotBg: string;
+  grid: string;
+  axis: string;
+  inkPrimary: string;
+  inkSecondary: string;
+  inkMuted: string;
+  sp: string;
+  rpm: string;
+  ok: string;
+  danger: string;
+  pwmStroke: string;
+  pwmFill: string;
+  bandFill: string;
+  stepLine: string;
+  tsLine: string;
+  peakStroke: string;
+}
+
+const DEFAULT_LIGHT_PALETTE: ChartPalette = {
+  bg: "#ffffff",
+  plotBg: "#fcfcfb",
+  grid: "#eef0f4",
+  axis: "#cbd5e1",
+  inkPrimary: "#0f172a",
+  inkSecondary: "#334155",
+  inkMuted: "#526075",
+  sp: "#ea580c",
+  rpm: "#1d4ed8",
+  ok: "#047857",
+  danger: "#dc2626",
+  pwmStroke: "#0f172a",
+  pwmFill: "rgba(15, 23, 42, 0.08)",
+  bandFill: "rgba(4, 120, 87, 0.10)",
+  stepLine: "rgba(15, 23, 42, 0.30)",
+  tsLine: "rgba(4, 120, 87, 0.45)",
+  peakStroke: "#ffffff",
+};
+
+function readChartPalette(scheme: ResolvedColorScheme): ChartPalette {
+  if (typeof window === "undefined") return DEFAULT_LIGHT_PALETTE;
+  const styles = getComputedStyle(document.documentElement);
+  const s = scheme === "dark" ? "dark" : "light";
+  const pick = (name: string, fallback: string) =>
+    styles.getPropertyValue(`--${name}-${s}`).trim() || fallback;
+
+  return {
+    bg: pick("chart-bg", scheme === "dark" ? "#111827" : "#ffffff"),
+    plotBg: pick("chart-plot-bg", scheme === "dark" ? "#0b1120" : "#fcfcfb"),
+    grid: pick("chart-grid", scheme === "dark" ? "#1e293b" : "#eef0f4"),
+    axis: pick("chart-axis", scheme === "dark" ? "#334155" : "#cbd5e1"),
+    inkPrimary: pick("ink-primary", scheme === "dark" ? "#f1f5f9" : "#0f172a"),
+    inkSecondary: pick("ink-secondary", scheme === "dark" ? "#cbd5e1" : "#334155"),
+    inkMuted: pick("ink-muted", scheme === "dark" ? "#94a3b8" : "#526075"),
+    sp: pick("accent-sp-bright", scheme === "dark" ? "#fb923c" : "#ea580c"),
+    rpm: pick("accent-rpm", scheme === "dark" ? "#60a5fa" : "#1d4ed8"),
+    ok: pick("accent-ok", scheme === "dark" ? "#34d399" : "#047857"),
+    danger: pick("accent-danger", scheme === "dark" ? "#ef4444" : "#dc2626"),
+    pwmStroke: pick("chart-pwm-stroke", scheme === "dark" ? "#e2e8f0" : "#0f172a"),
+    pwmFill: pick(
+      "chart-pwm-fill",
+      scheme === "dark" ? "rgba(226, 232, 240, 0.12)" : "rgba(15, 23, 42, 0.08)"
+    ),
+    bandFill: pick(
+      "chart-band-fill",
+      scheme === "dark" ? "rgba(52, 211, 153, 0.14)" : "rgba(4, 120, 87, 0.10)"
+    ),
+    stepLine: pick(
+      "chart-step-line",
+      scheme === "dark" ? "rgba(226, 232, 240, 0.35)" : "rgba(15, 23, 42, 0.30)"
+    ),
+    tsLine: pick(
+      "chart-ts-line",
+      scheme === "dark" ? "rgba(52, 211, 153, 0.50)" : "rgba(4, 120, 87, 0.45)"
+    ),
+    peakStroke: scheme === "dark" ? "#0b1120" : "#ffffff",
+  };
+}
+
+function getVisibleRange(
+  source: TelemetrySample[],
+  timeWindow: TimeWindow
+): { startIdx: number; endIdx: number } {
+  const len = source.length;
+  if (len === 0) return { startIdx: 0, endIdx: 0 };
+  if (timeWindow === 0) return { startIdx: 0, endIdx: len };
+
+  const latestT = source[len - 1].elapsedSec;
+  const minT = latestT - timeWindow;
+  let startIdx = 0;
+  for (let i = len - 1; i >= 0; i--) {
+    if (source[i].elapsedSec < minT) {
+      startIdx = i;
+      break;
+    }
+  }
+  return { startIdx, endIdx: len };
+}
+
+function computeDomains(
+  source: TelemetrySample[],
+  startIdx: number,
+  endIdx: number,
+  timeWindow: TimeWindow
+): ChartDomains {
+  if (endIdx <= startIdx) {
+    return {
+      tMin: 0,
+      tMax: timeWindow === 0 ? 20 : timeWindow,
+      yMaxRpm: 250,
+      errAbsMax: 100,
+    };
+  }
+
+  const firstT = source[startIdx].elapsedSec;
+  const lastT = source[endIdx - 1].elapsedSec;
+  const tMin = timeWindow === 0 ? firstT : Math.max(0, lastT - timeWindow);
+  const tMax =
+    timeWindow === 0
+      ? Math.max(firstT + 5, lastT)
+      : Math.max(tMin + timeWindow, lastT);
+
+  let maxVal = 100;
+  let maxAbsErr = 25;
+  for (let i = startIdx; i < endIdx; i++) {
+    const s = source[i];
+    if (s.setpoint > maxVal) maxVal = s.setpoint;
+    if (s.rpm > maxVal) maxVal = s.rpm;
+    const ae = Math.abs(s.error);
+    if (ae > maxAbsErr) maxAbsErr = ae;
+  }
+
+  const yMaxRpm = Math.max(100, Math.ceil((maxVal * 1.16) / 50) * 50);
+  const errAbsMax = Math.max(25, Math.ceil((maxAbsErr * 1.15) / 25) * 25);
+
+  return { tMin, tMax, yMaxRpm, errAbsMax };
+}
+
+export const StepResponseChart = React.memo(function StepResponseChart({
+  samplesRef,
+  telemetryVersionRef,
   metrics,
   onClearPlot,
+  onExportPngSuccess,
 }: StepResponseChartProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(20);
   const [subTrace, setSubTrace] = useState<SubTraceMode>("pwm");
   const [showBand, setShowBand] = useState(true);
   const [isFrozen, setIsFrozen] = useState(false);
-  const [frozenSamples, setFrozenSamples] = useState<TelemetrySample[]>([]);
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [hoveredSample, setHoveredSample] = useState<TelemetrySample | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 420 });
 
-  // Track responsive container width
+  // Refs untuk render loop rAF agar bebas re-render React 20–60 FPS
+  const frozenSamplesRef = useRef<TelemetrySample[]>([]);
+  const isFrozenRef = useRef(false);
+  const timeWindowRef = useRef<TimeWindow>(20);
+  const subTraceRef = useRef<SubTraceMode>("pwm");
+  const showBandRef = useRef(true);
+  const metricsRef = useRef<StepMetrics>(metrics);
+  const canvasSizeRef = useRef(canvasSize);
+  const hoverIdxRef = useRef<number | null>(null);
+  const lastDrawnVersionRef = useRef(-1);
+  const needsRedrawRef = useRef(true);
+  const paletteRef = useRef<ChartPalette>(DEFAULT_LIGHT_PALETTE);
+  const fontsRef = useRef({
+    sans: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+    mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+  });
+
+  // Sinkronkan state UI & props ke refs dan tandai redraw
   useEffect(() => {
-    const el = containerRef.current;
+    isFrozenRef.current = isFrozen;
+    timeWindowRef.current = timeWindow;
+    subTraceRef.current = subTrace;
+    showBandRef.current = showBand;
+    metricsRef.current = metrics;
+    canvasSizeRef.current = canvasSize;
+    needsRedrawRef.current = true;
+  }, [isFrozen, timeWindow, subTrace, showBand, metrics, canvasSize]);
+
+  // Sinkronkan font aktual dan palet tema (light / dark) termasuk perubahan OS & tab lain
+  useEffect(() => {
+    const syncThemeAndFonts = (scheme: ResolvedColorScheme) => {
+      paletteRef.current = readChartPalette(scheme);
+      const styles = getComputedStyle(document.documentElement);
+      const sans = styles.getPropertyValue("--font-sans-stack").trim();
+      const mono = styles.getPropertyValue("--font-mono-stack").trim();
+      if (sans || mono) {
+        fontsRef.current = {
+          sans: sans || fontsRef.current.sans,
+          mono: mono || fontsRef.current.mono,
+        };
+      }
+      needsRedrawRef.current = true;
+    };
+
+    syncThemeAndFonts(getResolvedColorScheme());
+
+    const unsubscribe = subscribeColorSchemeChange((resolved) => {
+      syncThemeAndFonts(resolved);
+    });
+
+    if (document.fonts && "ready" in document.fonts) {
+      void document.fonts.ready.then(() => {
+        needsRedrawRef.current = true;
+      });
+    }
+
+    return unsubscribe;
+  }, []);
+
+  // Ukur lebar unpadded inner wrapper (mencegah canvas overflow ke luar border kartu)
+  useEffect(() => {
+    const el = canvasWrapRef.current;
     if (!el) return;
 
     const update = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0) {
-        setCanvasSize({
-          width: Math.floor(rect.width),
-          height: rect.width < 640 ? 340 : 420,
-        });
+      const nextWidth = Math.floor(el.clientWidth);
+      if (nextWidth > 0) {
+        const nextHeight = nextWidth < 640 ? 340 : 420;
+        setCanvasSize((prev) =>
+          prev.width === nextWidth && prev.height === nextHeight
+            ? prev
+            : { width: nextWidth, height: nextHeight }
+        );
       }
     };
 
@@ -50,36 +278,9 @@ export function StepResponseChart({
     return () => ro.disconnect();
   }, []);
 
-  const activeSource = isFrozen ? frozenSamples : samples;
-
-  const visibleSamples = useMemo(() => {
-    if (activeSource.length === 0) return [];
-    if (timeWindow === 0) return activeSource;
-    const latestT = activeSource[activeSource.length - 1].elapsedSec;
-    const minT = latestT - timeWindow;
-    let startIdx = 0;
-    for (let i = activeSource.length - 1; i >= 0; i--) {
-      if (activeSource[i].elapsedSec < minT) {
-        startIdx = i;
-        break;
-      }
-    }
-    return activeSource.slice(startIdx);
-  }, [activeSource, timeWindow]);
-
-  const toggleFreeze = () => {
-    if (!isFrozen) {
-      setFrozenSamples(samples);
-      setIsFrozen(true);
-    } else {
-      setIsFrozen(false);
-    }
-  };
-
-  // Layout geometry shared between render & pointer hit-testing
-  const layout = useMemo(() => {
-    const padLeft = 56;
-    const padRight = 18;
+  const layout = useMemo<ChartLayout>(() => {
+    const padLeft = 54;
+    const padRight = 26;
     const padTop = 18;
     const padBottom = 28;
     const gap = 22;
@@ -90,57 +291,58 @@ export function StepResponseChart({
     const mainTop = padTop;
     const subTop = padTop + mainH + gap;
 
-    return { padLeft, padRight, padTop, padBottom, gap, plotW, mainH, subH, mainTop, subTop };
+    return {
+      padLeft,
+      padRight,
+      padTop,
+      padBottom,
+      gap,
+      plotW,
+      mainH,
+      subH,
+      mainTop,
+      subTop,
+    };
   }, [canvasSize]);
 
-  // Compute axis domains
-  const domains = useMemo(() => {
-    if (visibleSamples.length === 0) {
-      return {
-        tMin: 0,
-        tMax: timeWindow === 0 ? 20 : timeWindow,
-        yMaxRpm: 250,
-        errAbsMax: 100,
-      };
-    }
-
-    const firstT = visibleSamples[0].elapsedSec;
-    const lastT = visibleSamples[visibleSamples.length - 1].elapsedSec;
-    const tMin = timeWindow === 0 ? firstT : Math.max(0, lastT - timeWindow);
-    const tMax =
-      timeWindow === 0
-        ? Math.max(firstT + 5, lastT)
-        : Math.max(tMin + timeWindow, lastT);
-
-    let maxVal = 100;
-    let maxAbsErr = 25;
-    for (const s of visibleSamples) {
-      if (s.setpoint > maxVal) maxVal = s.setpoint;
-      if (s.rpm > maxVal) maxVal = s.rpm;
-      const ae = Math.abs(s.error);
-      if (ae > maxAbsErr) maxAbsErr = ae;
-    }
-
-    // Round up cleanly to nearest 50 RPM
-    const yMaxRpm = Math.max(100, Math.ceil((maxVal * 1.16) / 50) * 50);
-    const errAbsMax = Math.max(25, Math.ceil((maxAbsErr * 1.15) / 25) * 25);
-
-    return { tMin, tMax, yMaxRpm, errAbsMax };
-  }, [visibleSamples, timeWindow]);
-
-  // Draw HiDPI oscilloscope canvas
+  const layoutRef = useRef<ChartLayout>(layout);
   useEffect(() => {
+    layoutRef.current = layout;
+    needsRedrawRef.current = true;
+  }, [layout]);
+
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const { width, height } = canvasSizeRef.current;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = canvasSize.width * dpr;
-    canvas.height = canvasSize.height * dpr;
+    const targetW = Math.round(width * dpr);
+    const targetH = Math.round(height * dpr);
+
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const { padLeft, plotW, mainH, subH, mainTop, subTop } = layout;
+    const source = isFrozenRef.current ? frozenSamplesRef.current : samplesRef.current;
+    const tw = timeWindowRef.current;
+    const st = subTraceRef.current;
+    const sb = showBandRef.current;
+    const m = metricsRef.current;
+    const lay = layoutRef.current;
+    const fonts = fontsRef.current;
+    const pal = paletteRef.current;
+
+    const { startIdx, endIdx } = getVisibleRange(source, tw);
+    const visibleCount = endIdx - startIdx;
+    const domains = computeDomains(source, startIdx, endIdx, tw);
+
+    const { padLeft, plotW, mainH, subH, mainTop, subTop } = lay;
     const { tMin, tMax, yMaxRpm, errAbsMax } = domains;
     const tSpan = Math.max(0.001, tMax - tMin);
 
@@ -150,20 +352,22 @@ export function StepResponseChart({
     const yPwmOf = (pwm: number) =>
       subTop + subH - (Math.max(0, Math.min(255, pwm)) / 255) * subH;
     const yErrOf = (err: number) =>
-      subTop + subH / 2 - (Math.max(-errAbsMax, Math.min(errAbsMax, err)) / errAbsMax) * (subH / 2);
+      subTop +
+      subH / 2 -
+      (Math.max(-errAbsMax, Math.min(errAbsMax, err)) / errAbsMax) * (subH / 2);
 
-    // 1. White architectural background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+    // 1. Surface background
+    ctx.fillStyle = pal.bg;
+    ctx.fillRect(0, 0, width, height);
 
     // 2. Plot area frames
-    ctx.fillStyle = "#fcfcfb";
+    ctx.fillStyle = pal.plotBg;
     ctx.fillRect(padLeft, mainTop, plotW, mainH);
     ctx.fillRect(padLeft, subTop, plotW, subH);
 
     // 3. Grid lines (Vertical time ticks)
-    const xTickCount = 6;
-    ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+    const xTickCount = width < 480 ? 4 : 6;
+    ctx.font = `10px ${fonts.mono}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
@@ -172,7 +376,7 @@ export function StepResponseChart({
       const x = Math.round(padLeft + frac * plotW) + 0.5;
       const tVal = tMin + frac * tSpan;
 
-      ctx.strokeStyle = i === 0 || i === xTickCount ? "#cbd5e1" : "#eef0f4";
+      ctx.strokeStyle = i === 0 || i === xTickCount ? pal.axis : pal.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, mainTop);
@@ -181,7 +385,7 @@ export function StepResponseChart({
       ctx.lineTo(x, subTop + subH);
       ctx.stroke();
 
-      ctx.fillStyle = "#64748b";
+      ctx.fillStyle = pal.inkMuted;
       ctx.fillText(`${tVal.toFixed(1)}s`, x, subTop + subH + 7);
     }
 
@@ -193,87 +397,87 @@ export function StepResponseChart({
       const val = (yMaxRpm * i) / yTickCount;
       const y = Math.round(yRpmOf(val)) + 0.5;
 
-      ctx.strokeStyle = i === 0 ? "#cbd5e1" : "#eef0f4";
+      ctx.strokeStyle = i === 0 ? pal.axis : pal.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(padLeft, y);
       ctx.lineTo(padLeft + plotW, y);
       ctx.stroke();
 
-      ctx.fillStyle = "#64748b";
+      ctx.fillStyle = pal.inkMuted;
       ctx.fillText(String(Math.round(val)), padLeft - 8, y);
     }
 
     // Main Y-axis label
     ctx.save();
-    ctx.fillStyle = "#475569";
-    ctx.font = '600 9px "Inter", sans-serif';
+    ctx.fillStyle = pal.inkSecondary;
+    ctx.font = `600 9.5px ${fonts.sans}`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText("SPEED (RPM)", padLeft + 6, mainTop + 5);
     ctx.restore();
 
     // 5. Sub-pane Y-axis ticks (PWM or Error)
-    ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+    ctx.font = `10px ${fonts.mono}`;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    if (subTrace === "pwm") {
+    if (st === "pwm") {
       for (const v of [0, 128, 255]) {
         const y = Math.round(yPwmOf(v)) + 0.5;
-        ctx.strokeStyle = v === 0 ? "#cbd5e1" : "#eef0f4";
+        ctx.strokeStyle = v === 0 ? pal.axis : pal.grid;
         ctx.beginPath();
         ctx.moveTo(padLeft, y);
         ctx.lineTo(padLeft + plotW, y);
         ctx.stroke();
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = pal.inkMuted;
         ctx.fillText(String(v), padLeft - 8, y);
       }
     } else {
       for (const v of [-errAbsMax, 0, errAbsMax]) {
         const y = Math.round(yErrOf(v)) + 0.5;
-        ctx.strokeStyle = v === 0 ? "#cbd5e1" : "#eef0f4";
+        ctx.strokeStyle = v === 0 ? pal.axis : pal.grid;
         ctx.beginPath();
         ctx.moveTo(padLeft, y);
         ctx.lineTo(padLeft + plotW, y);
         ctx.stroke();
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = pal.inkMuted;
         ctx.fillText(v > 0 ? `+${v}` : String(v), padLeft - 8, y);
       }
     }
 
     // Sub-pane label
-    ctx.fillStyle = "#475569";
-    ctx.font = '600 9px "Inter", sans-serif';
+    ctx.fillStyle = pal.inkSecondary;
+    ctx.font = `600 9.5px ${fonts.sans}`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(
-      subTrace === "pwm" ? "ACTUATOR EFFORT (PWM 0–255)" : "TRACKING ERROR (SP − RPM)",
+      st === "pwm" ? "ACTUATOR EFFORT (PWM 0–255)" : "TRACKING ERROR (SP − RPM)",
       padLeft + 6,
       subTop + 4
     );
 
-    if (visibleSamples.length > 0) {
-      const latest = visibleSamples[visibleSamples.length - 1];
+    if (visibleCount > 0) {
+      const latest = source[endIdx - 1];
 
       // 6. Optional ±2% Settling Tolerance Band around active Setpoint
-      if (showBand && latest.mode === 1 && latest.setpoint >= 5) {
+      if (sb && latest.mode === 1 && latest.setpoint >= 5) {
         const tol = Math.max(latest.setpoint * 0.02, 1.0);
         const yHi = yRpmOf(latest.setpoint + tol);
         const yLo = yRpmOf(latest.setpoint - tol);
-        ctx.fillStyle = "rgba(5, 150, 105, 0.09)";
+        ctx.fillStyle = pal.bandFill;
         ctx.fillRect(padLeft, yHi, plotW, Math.max(2, yLo - yHi));
       }
 
-      // 7. Step Start Marker (t0)
+      // 7. Step Start Marker (t0) & Settling Time Marker (Ts)
       if (
-        metrics.hasStep &&
-        metrics.stepStartTimeSec !== null &&
-        metrics.stepStartTimeSec >= tMin &&
-        metrics.stepStartTimeSec <= tMax
+        m.hasStep &&
+        m.stepStartTimeSec !== null &&
+        m.stepStartTimeSec >= tMin &&
+        m.stepStartTimeSec <= tMax
       ) {
-        const sx = Math.round(xOf(metrics.stepStartTimeSec)) + 0.5;
+        const sx = Math.round(xOf(m.stepStartTimeSec)) + 0.5;
         ctx.save();
-        ctx.strokeStyle = "rgba(15, 23, 42, 0.28)";
+        ctx.strokeStyle = pal.stepLine;
         ctx.setLineDash([3, 3]);
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -282,11 +486,38 @@ export function StepResponseChart({
         ctx.stroke();
         ctx.restore();
 
-        ctx.fillStyle = "#475569";
-        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.fillStyle = pal.inkSecondary;
+        ctx.font = `600 9.5px ${fonts.mono}`;
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
-        ctx.fillText("STEP t₀", sx + 4, mainTop + 18);
+        ctx.fillText("STEP t₀", sx + 4, mainTop + 19);
+      }
+
+      if (
+        m.hasStep &&
+        m.isSettled &&
+        m.stepStartTimeSec !== null &&
+        m.settlingTimeSec !== null
+      ) {
+        const tsAbs = m.stepStartTimeSec + m.settlingTimeSec;
+        if (tsAbs >= tMin && tsAbs <= tMax) {
+          const tx = Math.round(xOf(tsAbs)) + 0.5;
+          ctx.save();
+          ctx.strokeStyle = pal.tsLine;
+          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(tx, mainTop);
+          ctx.lineTo(tx, mainTop + mainH);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.fillStyle = pal.ok;
+          ctx.font = `600 9.5px ${fonts.mono}`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          ctx.fillText(`Ts ${m.settlingTimeSec.toFixed(1)}s`, tx + 4, mainTop + 32);
+        }
       }
 
       // 8. Sub-trace Plot (PWM or Error)
@@ -295,43 +526,44 @@ export function StepResponseChart({
       ctx.rect(padLeft, subTop, plotW, subH);
       ctx.clip();
 
-      if (subTrace === "pwm") {
-        // Area fill
+      if (st === "pwm") {
         ctx.beginPath();
-        visibleSamples.forEach((s, i) => {
+        for (let i = startIdx; i < endIdx; i++) {
+          const s = source[i];
           const x = xOf(s.elapsedSec);
           const y = yPwmOf(s.pwm);
-          if (i === 0) ctx.moveTo(x, y);
+          if (i === startIdx) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
-        });
-        const lastX = xOf(visibleSamples[visibleSamples.length - 1].elapsedSec);
-        const firstX = xOf(visibleSamples[0].elapsedSec);
+        }
+        const lastX = xOf(source[endIdx - 1].elapsedSec);
+        const firstX = xOf(source[startIdx].elapsedSec);
         ctx.lineTo(lastX, subTop + subH);
         ctx.lineTo(firstX, subTop + subH);
         ctx.closePath();
-        ctx.fillStyle = "rgba(15, 23, 42, 0.08)";
+        ctx.fillStyle = pal.pwmFill;
         ctx.fill();
 
-        // Stroke line
         ctx.beginPath();
-        visibleSamples.forEach((s, i) => {
+        for (let i = startIdx; i < endIdx; i++) {
+          const s = source[i];
           const x = xOf(s.elapsedSec);
           const y = yPwmOf(s.pwm);
-          if (i === 0) ctx.moveTo(x, y);
+          if (i === startIdx) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
-        });
-        ctx.strokeStyle = "#0f172a";
+        }
+        ctx.strokeStyle = pal.pwmStroke;
         ctx.lineWidth = 1.5;
         ctx.stroke();
       } else {
         ctx.beginPath();
-        visibleSamples.forEach((s, i) => {
+        for (let i = startIdx; i < endIdx; i++) {
+          const s = source[i];
           const x = xOf(s.elapsedSec);
           const y = yErrOf(s.error);
-          if (i === 0) ctx.moveTo(x, y);
+          if (i === startIdx) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
-        });
-        ctx.strokeStyle = "#dc2626";
+        }
+        ctx.strokeStyle = pal.danger;
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
@@ -344,19 +576,19 @@ export function StepResponseChart({
       ctx.clip();
 
       ctx.beginPath();
-      visibleSamples.forEach((s, i) => {
+      for (let i = startIdx; i < endIdx; i++) {
+        const s = source[i];
         const x = xOf(s.elapsedSec);
         const y = yRpmOf(s.setpoint);
-        if (i === 0) {
+        if (i === startIdx) {
           ctx.moveTo(x, y);
         } else {
-          // Step-hold transition
-          const prevY = yRpmOf(visibleSamples[i - 1].setpoint);
+          const prevY = yRpmOf(source[i - 1].setpoint);
           ctx.lineTo(x, prevY);
           ctx.lineTo(x, y);
         }
-      });
-      ctx.strokeStyle = "#ea580c";
+      }
+      ctx.strokeStyle = pal.sp;
       ctx.lineWidth = 1.75;
       ctx.setLineDash([6, 4]);
       ctx.stroke();
@@ -364,35 +596,36 @@ export function StepResponseChart({
 
       // 10. Main Plot: Actual RPM (Precision Blue solid)
       ctx.beginPath();
-      visibleSamples.forEach((s, i) => {
+      for (let i = startIdx; i < endIdx; i++) {
+        const s = source[i];
         const x = xOf(s.elapsedSec);
         const y = yRpmOf(s.rpm);
-        if (i === 0) ctx.moveTo(x, y);
+        if (i === startIdx) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
-      });
-      ctx.strokeStyle = "#1d4ed8";
+      }
+      ctx.strokeStyle = pal.rpm;
       ctx.lineWidth = 2.1;
       ctx.lineJoin = "round";
       ctx.stroke();
 
       // 11. Peak Overshoot Marker
       if (
-        metrics.hasStep &&
-        metrics.overshootPct !== null &&
-        metrics.overshootPct > 0.5 &&
-        metrics.stepStartTimeSec !== null &&
-        metrics.peakTimeSec !== null &&
-        metrics.peakRpm !== null
+        m.hasStep &&
+        m.overshootPct !== null &&
+        m.overshootPct > 0.5 &&
+        m.stepStartTimeSec !== null &&
+        m.peakTimeSec !== null &&
+        m.peakRpm !== null
       ) {
-        const peakT = metrics.stepStartTimeSec + metrics.peakTimeSec;
+        const peakT = m.stepStartTimeSec + m.peakTimeSec;
         if (peakT >= tMin && peakT <= tMax) {
           const px = xOf(peakT);
-          const py = yRpmOf(metrics.peakRpm);
-          ctx.fillStyle = "#dc2626";
+          const py = yRpmOf(m.peakRpm);
+          ctx.fillStyle = pal.danger;
           ctx.beginPath();
           ctx.arc(px, py, 3.5, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = "#ffffff";
+          ctx.strokeStyle = pal.peakStroke;
           ctx.lineWidth = 1.5;
           ctx.stroke();
         }
@@ -401,14 +634,15 @@ export function StepResponseChart({
       ctx.restore();
 
       // 12. Interactive Hover Crosshair
-      if (hoverIdx !== null && visibleSamples[hoverIdx]) {
-        const hs = visibleSamples[hoverIdx];
+      const hIdx = hoverIdxRef.current;
+      if (hIdx !== null && hIdx >= startIdx && hIdx < endIdx) {
+        const hs = source[hIdx];
         const hx = Math.round(xOf(hs.elapsedSec)) + 0.5;
         const hyRpm = yRpmOf(hs.rpm);
         const hySp = yRpmOf(hs.setpoint);
 
         ctx.save();
-        ctx.strokeStyle = "#94a3b8";
+        ctx.strokeStyle = pal.inkMuted;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]);
         ctx.beginPath();
@@ -419,21 +653,19 @@ export function StepResponseChart({
         ctx.stroke();
         ctx.restore();
 
-        // Highlight dots
-        ctx.fillStyle = "#ea580c";
+        ctx.fillStyle = pal.sp;
         ctx.beginPath();
         ctx.arc(hx, hySp, 3.5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = "#1d4ed8";
+        ctx.fillStyle = pal.rpm;
         ctx.beginPath();
         ctx.arc(hx, hyRpm, 4, 0, Math.PI * 2);
         ctx.fill();
       }
     } else {
-      // Empty state message inside canvas
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = '12px "JetBrains Mono", monospace';
+      ctx.fillStyle = pal.inkMuted;
+      ctx.font = `12px ${fonts.mono}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
@@ -444,48 +676,95 @@ export function StepResponseChart({
     }
 
     // Crisp outer borders for both plot frames
-    ctx.strokeStyle = "#cbd5e1";
+    ctx.strokeStyle = pal.axis;
     ctx.lineWidth = 1;
     ctx.strokeRect(padLeft + 0.5, mainTop + 0.5, plotW, mainH);
     ctx.strokeRect(padLeft + 0.5, subTop + 0.5, plotW, subH);
-  }, [canvasSize, layout, domains, visibleSamples, subTrace, showBand, metrics, hoverIdx]);
+  }, [samplesRef]);
+
+  // rAF loop ringan: hanya menggambar ulang jika telemetryVersion atau UI/tema berubah
+  useEffect(() => {
+    let rafId = 0;
+    const tick = () => {
+      const currentVersion = telemetryVersionRef.current;
+      if (
+        needsRedrawRef.current ||
+        (!isFrozenRef.current && currentVersion !== lastDrawnVersionRef.current)
+      ) {
+        lastDrawnVersionRef.current = currentVersion;
+        needsRedrawRef.current = false;
+        drawCanvas();
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [drawCanvas, telemetryVersionRef]);
+
+  const toggleFreeze = () => {
+    if (!isFrozen) {
+      frozenSamplesRef.current = samplesRef.current.slice();
+      setIsFrozen(true);
+    } else {
+      frozenSamplesRef.current = [];
+      setIsFrozen(false);
+    }
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (visibleSamples.length === 0) return;
+    const source = isFrozenRef.current ? frozenSamplesRef.current : samplesRef.current;
+    const { startIdx, endIdx } = getVisibleRange(source, timeWindowRef.current);
+    if (endIdx <= startIdx) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const { padLeft, plotW } = layout;
+    const { padLeft, plotW } = layoutRef.current;
     if (x < padLeft || x > padLeft + plotW) {
-      setHoverIdx(null);
+      if (hoverIdxRef.current !== null) {
+        hoverIdxRef.current = null;
+        needsRedrawRef.current = true;
+        setHoveredSample(null);
+      }
       return;
     }
 
-    const { tMin, tMax } = domains;
+    const { tMin, tMax } = computeDomains(source, startIdx, endIdx, timeWindowRef.current);
     const targetT = tMin + ((x - padLeft) / plotW) * (tMax - tMin);
 
-    // Binary search nearest sample by elapsedSec
-    let lo = 0;
-    let hi = visibleSamples.length - 1;
+    let lo = startIdx;
+    let hi = endIdx - 1;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (visibleSamples[mid].elapsedSec < targetT) lo = mid + 1;
+      if (source[mid].elapsedSec < targetT) lo = mid + 1;
       else hi = mid;
     }
     if (
-      lo > 0 &&
-      Math.abs(visibleSamples[lo - 1].elapsedSec - targetT) <
-        Math.abs(visibleSamples[lo].elapsedSec - targetT)
+      lo > startIdx &&
+      Math.abs(source[lo - 1].elapsedSec - targetT) <
+        Math.abs(source[lo].elapsedSec - targetT)
     ) {
       lo = lo - 1;
     }
-    setHoverIdx(lo);
+
+    if (hoverIdxRef.current !== lo) {
+      hoverIdxRef.current = lo;
+      needsRedrawRef.current = true;
+      setHoveredSample(source[lo]);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverIdxRef.current !== null) {
+      hoverIdxRef.current = null;
+      needsRedrawRef.current = true;
+      setHoveredSample(null);
+    }
   };
 
   const handleExportPng = () => {
     const srcCanvas = canvasRef.current;
     if (!srcCanvas) return;
 
-    // Compose annotated report PNG (with header & PID summary)
     const dpr = window.devicePixelRatio || 1;
     const headerH = 44;
     const outCanvas = document.createElement("canvas");
@@ -494,17 +773,21 @@ export function StepResponseChart({
     const ctx = outCanvas.getContext("2d");
     if (!ctx) return;
 
+    const source = isFrozenRef.current ? frozenSamplesRef.current : samplesRef.current;
+    const latest = source.length > 0 ? source[source.length - 1] : null;
+    const fonts = fontsRef.current;
+    const pal = paletteRef.current;
+
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = pal.bg;
     ctx.fillRect(0, 0, canvasSize.width, canvasSize.height + headerH);
 
-    const latest = visibleSamples[visibleSamples.length - 1];
-    ctx.fillStyle = "#0f172a";
-    ctx.font = '600 12px "Inter", sans-serif';
+    ctx.fillStyle = pal.inkPrimary;
+    ctx.font = `600 12px ${fonts.sans}`;
     ctx.fillText("PENS SPK — STEP RESPONSE (SETPOINT vs ACTUAL RPM)", 16, 18);
 
-    ctx.fillStyle = "#475569";
-    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.fillStyle = pal.inkSecondary;
+    ctx.font = `11px ${fonts.mono}`;
     const meta = latest
       ? `Kp=${latest.kp.toFixed(2)}  Ki=${latest.ki.toFixed(2)}  Kd=${latest.kd.toFixed(2)}  |  Tr=${metrics.riseTimeSec != null ? metrics.riseTimeSec.toFixed(2) + "s" : "—"}  OS=${metrics.overshootPct != null ? metrics.overshootPct.toFixed(1) + "%" : "—"}  Ts=${metrics.settlingTimeSec != null ? metrics.settlingTimeSec.toFixed(2) + "s" : "—"}`
       : "No telemetry data";
@@ -518,36 +801,57 @@ export function StepResponseChart({
     link.href = url;
     link.download = `PENS_SPK_StepResponse_${Date.now()}.png`;
     link.click();
+    onExportPngSuccess?.();
   };
 
-  const hoveredSample = hoverIdx !== null ? visibleSamples[hoverIdx] : null;
+  const chartSummary = metrics.hasStep
+    ? `Grafik respon step dari ${metrics.initialRpm.toFixed(0)} ke ${metrics.targetSetpoint.toFixed(0)} RPM. Rise time ${metrics.riseTimeSec != null ? metrics.riseTimeSec.toFixed(2) + " detik" : "belum tercapai"}, overshoot ${metrics.overshootPct != null ? metrics.overshootPct.toFixed(1) + "%" : "belum terukur"}, settling time ${metrics.settlingTimeSec != null ? metrics.settlingTimeSec.toFixed(2) + " detik" : "belum stabil"}.`
+    : "Grafik osiloskop real-time perbandingan Setpoint dan Actual RPM motor DC 24V beserta effort PWM dan tracking error.";
 
   return (
-    <div className="border border-[#dfe2e8] bg-white">
+    <section
+      aria-labelledby="step-response-heading"
+      className="panel-isolated overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-surface)]"
+    >
       {/* Chart Header Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#dfe2e8] px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hairline)] px-4 py-2.5">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-[#0f172a]">
+            <h2
+              id="step-response-heading"
+              className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--ink-primary)]"
+            >
               TRANSIENT STEP RESPONSE
             </h2>
-            <div className="mt-0.5 flex items-center gap-3 text-[11px]">
-              <span className="inline-flex items-center gap-1.5 text-[#475569]">
-                <span className="inline-block h-0.5 w-3.5 border-t-2 border-dashed border-[#ea580c]" />
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span className="inline-flex items-center gap-1.5 text-[var(--ink-secondary)]">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-0.5 w-3.5 border-t-2 border-dashed border-[var(--accent-sp-bright)]"
+                />
                 Setpoint (SP)
               </span>
-              <span className="inline-flex items-center gap-1.5 text-[#475569]">
-                <span className="inline-block h-0.5 w-3.5 bg-[#1d4ed8]" />
+              <span className="inline-flex items-center gap-1.5 text-[var(--ink-secondary)]">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-0.5 w-3.5 bg-[var(--accent-rpm)]"
+                />
                 Actual RPM
               </span>
               <button
                 type="button"
+                aria-pressed={showBand}
                 onClick={() => setShowBand((v) => !v)}
-                className={`inline-flex items-center gap-1 text-[11px] transition-opacity ${
-                  showBand ? "text-[#059669]" : "text-[#94a3b8] line-through"
+                className={`inline-flex min-h-7 items-center gap-1.5 px-1.5 py-0.5 text-xs font-medium transition-colors ${
+                  showBand
+                    ? "text-[var(--accent-ok)] hover:bg-[var(--accent-ok-bg)]"
+                    : "text-[var(--ink-muted)] line-through hover:text-[var(--ink-primary)]"
                 }`}
               >
-                <span className="inline-block h-2.5 w-2.5 border border-[#059669]/40 bg-[#059669]/15" />
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2.5 w-2.5 border border-[var(--accent-ok-border)] bg-[var(--accent-ok-bg)]"
+                />
                 ±2% Band
               </button>
             </div>
@@ -557,25 +861,31 @@ export function StepResponseChart({
         {/* Plot Controls */}
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Sub-trace toggle */}
-          <div className="flex border border-[#dfe2e8] bg-[#f5f5f3] p-0.5 font-mono text-[10px]">
+          <div
+            role="group"
+            aria-label="Jenis sub-grafik bawah"
+            className="flex border border-[var(--border-control)] bg-[var(--bg-subtle)] p-0.5 font-mono text-[0.6875rem]"
+          >
             <button
               type="button"
+              aria-pressed={subTrace === "pwm"}
               onClick={() => setSubTrace("pwm")}
-              className={`px-2 py-0.5 ${
+              className={`min-h-7 px-2.5 py-1 transition-colors ${
                 subTrace === "pwm"
-                  ? "bg-white font-semibold text-[#0f172a]"
-                  : "text-[#64748b] hover:text-[#0f172a]"
+                  ? "bg-[var(--bg-surface)] font-semibold text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
+                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
               }`}
             >
               PWM
             </button>
             <button
               type="button"
+              aria-pressed={subTrace === "error"}
               onClick={() => setSubTrace("error")}
-              className={`px-2 py-0.5 ${
+              className={`min-h-7 px-2.5 py-1 transition-colors ${
                 subTrace === "error"
-                  ? "bg-white font-semibold text-[#0f172a]"
-                  : "text-[#64748b] hover:text-[#0f172a]"
+                  ? "bg-[var(--bg-surface)] font-semibold text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
+                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
               }`}
             >
               ERROR
@@ -583,16 +893,21 @@ export function StepResponseChart({
           </div>
 
           {/* Time Window */}
-          <div className="flex border border-[#dfe2e8] bg-[#f5f5f3] p-0.5 font-mono text-[10px]">
+          <div
+            role="group"
+            aria-label="Jendela waktu grafik"
+            className="flex border border-[var(--border-control)] bg-[var(--bg-subtle)] p-0.5 font-mono text-[0.6875rem]"
+          >
             {([10, 20, 30, 60, 0] as TimeWindow[]).map((w) => (
               <button
                 key={w}
                 type="button"
+                aria-pressed={timeWindow === w}
                 onClick={() => setTimeWindow(w)}
-                className={`px-1.5 py-0.5 ${
+                className={`min-h-7 min-w-8 px-2 py-1 transition-colors ${
                   timeWindow === w
-                    ? "bg-white font-semibold text-[#0f172a]"
-                    : "text-[#64748b] hover:text-[#0f172a]"
+                    ? "bg-[var(--bg-surface)] font-semibold text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_var(--border-control)]"
+                    : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
                 }`}
               >
                 {w === 0 ? "ALL" : `${w}s`}
@@ -600,72 +915,89 @@ export function StepResponseChart({
             ))}
           </div>
 
-          {/* Freeze / Live */}
+          {/* Freeze / Resume */}
           <button
             type="button"
             onClick={toggleFreeze}
-            className={`flex h-7 items-center gap-1 border px-2 font-mono text-[10px] font-semibold transition-colors ${
+            className={`flex min-h-8 items-center gap-1.5 border px-2.5 py-1 font-mono text-[0.6875rem] font-semibold transition-colors ${
               isFrozen
-                ? "border-amber-500 bg-amber-50 text-amber-800"
-                : "border-[#dfe2e8] bg-white text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a]"
+                ? "border-[var(--accent-warn-border)] bg-[var(--accent-warn-bg)] text-[var(--accent-warn)]"
+                : "border-[var(--border-control)] bg-[var(--bg-surface)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
             }`}
             title="Bekukan grafik untuk inspeksi tanpa menghentikan motor"
           >
-            {isFrozen ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+            {isFrozen ? (
+              <Play aria-hidden="true" className="h-3.5 w-3.5" />
+            ) : (
+              <Pause aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
             <span>{isFrozen ? "RESUME" : "FREEZE"}</span>
           </button>
 
           <button
             type="button"
-            onClick={onClearPlot}
-            className="flex h-7 items-center gap-1 border border-[#dfe2e8] bg-white px-2 font-mono text-[10px] text-[#475569] hover:border-[#0f172a] hover:text-[#0f172a]"
+            onClick={() => {
+              hoverIdxRef.current = null;
+              setHoveredSample(null);
+              if (isFrozenRef.current) {
+                frozenSamplesRef.current = [];
+              }
+              onClearPlot();
+              needsRedrawRef.current = true;
+            }}
+            className="flex min-h-8 items-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2.5 py-1 font-mono text-[0.6875rem] font-medium text-[var(--ink-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--ink-primary)]"
             title="Bersihkan grafik"
           >
-            <RotateCcw className="h-3 w-3" />
+            <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
             <span>CLEAR</span>
           </button>
 
           <button
             type="button"
             onClick={handleExportPng}
-            className="flex h-7 items-center gap-1 border border-[#dfe2e8] bg-white px-2 font-mono text-[10px] font-medium text-[#0f172a] hover:border-[#0f172a] hover:bg-[#f5f5f3]"
-            title="Simpan grafik PNG untuk Laporan Praktikum"
+            className="flex min-h-8 items-center gap-1.5 border border-[var(--border-control)] bg-[var(--bg-surface)] px-2.5 py-1 font-mono text-[0.6875rem] font-semibold text-[var(--ink-primary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
+            title="Simpan grafik PNG beranotasi untuk Laporan Praktikum"
           >
-            <Camera className="h-3 w-3" />
+            <Camera aria-hidden="true" className="h-3.5 w-3.5" />
             <span>PNG</span>
           </button>
         </div>
       </div>
 
-      {/* Canvas Container + Hover Readout Bar */}
-      <div ref={containerRef} className="relative w-full select-none p-2">
-        <canvas
-          ref={canvasRef}
-          style={{ width: canvasSize.width, height: canvasSize.height }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIdx(null)}
-          className="block cursor-crosshair"
-        />
+      {/* Canvas Container */}
+      <figure className="m-0 p-2">
+        <div ref={canvasWrapRef} className="relative w-full select-none">
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={chartSummary}
+            style={{ width: canvasSize.width, height: canvasSize.height }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            className="block max-w-full cursor-crosshair"
+          />
 
-        {/* Floating Cursor Inspector */}
-        {hoveredSample && (
-          <div className="pointer-events-none absolute right-5 top-4 border border-[#0f172a] bg-white/95 px-2.5 py-1.5 font-mono text-[11px] tabular-nums shadow-sm">
-            <div className="mb-0.5 flex items-center justify-between gap-4 border-b border-[#eceef2] pb-0.5 text-[10px] text-[#64748b]">
-              <span>t = {hoveredSample.elapsedSec.toFixed(2)} s</span>
-              <span>{hoveredSample.voltage.toFixed(1)} V</span>
+          {/* Floating Cursor Inspector */}
+          {hoveredSample ? (
+            <div className="pointer-events-none absolute right-3 top-2 border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 px-2.5 py-1.5 font-mono text-xs tabular-nums shadow-sm">
+              <div className="mb-0.5 flex items-center justify-between gap-4 border-b border-[var(--border-hairline)] pb-0.5 text-[0.6875rem] text-[var(--ink-muted)]">
+                <span>t = {hoveredSample.elapsedSec.toFixed(2)} s</span>
+                <span>{hoveredSample.voltage.toFixed(1)} V</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                <span className="text-[var(--accent-sp)]">SP: {hoveredSample.setpoint.toFixed(1)}</span>
+                <span className="text-[var(--accent-rpm)]">RPM: {hoveredSample.rpm.toFixed(1)}</span>
+                <span className="text-[var(--ink-secondary)]">
+                  ERR: {hoveredSample.error >= 0 ? "+" : ""}
+                  {hoveredSample.error.toFixed(1)}
+                </span>
+                <span className="text-[var(--ink-primary)]">PWM: {hoveredSample.pwm}</span>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-              <span className="text-[#ea580c]">SP: {hoveredSample.setpoint.toFixed(1)}</span>
-              <span className="text-[#1d4ed8]">RPM: {hoveredSample.rpm.toFixed(1)}</span>
-              <span className="text-[#475569]">
-                ERR: {hoveredSample.error >= 0 ? "+" : ""}
-                {hoveredSample.error.toFixed(1)}
-              </span>
-              <span className="text-[#0f172a]">PWM: {hoveredSample.pwm}</span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          ) : null}
+        </div>
+        <figcaption className="visually-hidden">{chartSummary}</figcaption>
+      </figure>
+    </section>
   );
-}
+});

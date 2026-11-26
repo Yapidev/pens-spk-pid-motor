@@ -8,25 +8,13 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  Activity,
-  ChevronDown,
-  ChevronUp,
-  Cpu,
-  GitCompareArrows,
-  Terminal,
-} from "lucide-react";
 import { AutoTunePanel } from "@/components/AutoTunePanel";
 import { ComparePanel } from "@/components/ComparePanel";
 import { ControlPanel } from "@/components/ControlPanel";
-import { LcdMirror } from "@/components/LcdMirror";
-import { MetricsPanel } from "@/components/MetricsPanel";
+import { PhoenixBentoRow } from "@/components/PhoenixBentoRow";
 import { SerialConsole } from "@/components/SerialConsole";
 import { StepResponseChart } from "@/components/StepResponseChart";
-import { TelemetryStrip } from "@/components/TelemetryStrip";
-import { TopBar } from "@/components/TopBar";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TopBar, type WorkspaceView } from "@/components/TopBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { computeStepMetrics, EMPTY_METRICS } from "@/lib/metrics";
 import { MotorPlantSimulator } from "@/lib/motorSimulator";
@@ -69,8 +57,6 @@ const METRICS_FLUSH_INTERVAL_MS = 250;
 const IDENTIFY_DURATION_MS = 3400;
 const GHOST_COLORS = ["#a855f7", "#14b8a6", "#eab308"] as const;
 
-type DockTab = "lcd" | "autotune" | "compare" | "serial";
-
 function formatClock(): string {
   const now = new Date();
   return now.toTimeString().slice(0, 8);
@@ -94,9 +80,8 @@ export function DashboardWorkspace() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
-  // Bottom Hardware Dock state
-  const [dockOpen, setDockOpen] = useState(true);
-  const [dockTab, setDockTab] = useState<DockTab>("lcd");
+  // Active Phoenix top-nav view
+  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
 
   // Throttled HUD state
   const [latestSample, setLatestSample] = useState<TelemetrySample | null>(null);
@@ -1036,24 +1021,12 @@ export function DashboardWorkspace() {
     }
   }, []);
 
-  const handleSelectDockTab = useCallback((tab: DockTab) => {
-    setDockTab(tab);
-    setDockOpen(true);
-    if (tab !== "serial") {
+  const handleChangeView = useCallback((view: WorkspaceView) => {
+    setActiveView(view);
+    if (view !== "serial") {
       showTelemetryLogsRef.current = false;
       pendingRxLogsRef.current = [];
     }
-  }, []);
-
-  const handleToggleDock = useCallback(() => {
-    setDockOpen((prev) => {
-      const next = !prev;
-      if (!next) {
-        showTelemetryLogsRef.current = false;
-        pendingRxLogsRef.current = [];
-      }
-      return next;
-    });
   }, []);
 
   const handleToggleTheme = useCallback(() => {
@@ -1089,6 +1062,11 @@ export function DashboardWorkspace() {
     <TooltipProvider delayDuration={300}>
       <TopBar
         hydrated={isHydrated}
+        activeView={activeView}
+        onChangeView={handleChangeView}
+        fopdtRSquared={fopdtModel?.rSquared ?? null}
+        ghostRunCount={ghostRuns.length}
+        serialLogCount={logs.length}
         connectionMode={connectionMode}
         connectionStatus={connectionStatus}
         baudRate={baudRate}
@@ -1112,19 +1090,18 @@ export function DashboardWorkspace() {
         onEstop={handleEstop}
       />
 
-      {/* Full-Viewport Edge-to-Edge Split Workbench */}
+      {/* Full-Viewport Modern 2-Column Asymmetric Bento Grid */}
       <main
         id="main-content"
         tabIndex={-1}
-        className="flex min-h-0 flex-1 flex-col outline-none xl:flex-row"
+        className="flex min-h-0 flex-1 flex-col gap-3 px-3 py-3 outline-none lg:px-5 lg:py-3.5 xl:flex-row"
       >
-        {/* Left Main Pane: Telemetry Strip + Oscilloscope + Inline Metrics + Hardware Dock */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <TelemetryStrip latest={latestSample} />
-
+        {/* Left/Center Bento (~68%): Hero Step Response Oscilloscope + Bottom Bento Row / Active Tool */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <StepResponseChart
             samplesRef={plotSamplesRef}
             telemetryVersionRef={telemetryVersionRef}
+            latestSample={latestSample}
             metrics={metrics}
             ghostRuns={ghostRuns}
             fopdtModel={fopdtModel}
@@ -1134,137 +1111,73 @@ export function DashboardWorkspace() {
             onExportPngSuccess={handleExportPngSuccess}
           />
 
-          <MetricsPanel metrics={metrics} />
-
-          {/* Bottom Hardware & Engineering Dock: LCD | Auto-Tune | Bandingkan | Serial */}
-          <section
-            aria-label="Panel perangkat keras, auto-tune, perbandingan, dan serial"
-            className="min-w-0 max-w-full shrink-0 border-t border-border bg-card"
-          >
-            <Tabs
-              value={dockTab}
-              onValueChange={(v) => handleSelectDockTab(v as DockTab)}
-              className="min-w-0 max-w-full gap-0"
-            >
-              <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border bg-[var(--bg-surface-alt)] px-3">
-                <TabsList
-                  variant="line"
-                  aria-label="Tab panel bawah"
-                  className="h-8 min-w-0 max-w-full justify-start gap-1 overflow-x-auto p-0"
-                >
-                  <TabsTrigger
-                    value="lcd"
-                    onClick={() => handleSelectDockTab("lcd")}
-                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
-                  >
-                    <Cpu aria-hidden="true" className="size-3.5" />
-                    <span>LCD 16×2</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="autotune"
-                    onClick={() => handleSelectDockTab("autotune")}
-                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
-                  >
-                    <Activity aria-hidden="true" className="size-3.5" />
-                    <span>Auto-Tune</span>
-                    {fopdtModel ? (
-                      <span className="font-mono text-[0.625rem] text-[var(--accent-ok)]">
-                        R² {(fopdtModel.rSquared * 100).toFixed(0)}%
-                      </span>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="compare"
-                    onClick={() => handleSelectDockTab("compare")}
-                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
-                  >
-                    <GitCompareArrows aria-hidden="true" className="size-3.5" />
-                    <span>Bandingkan</span>
-                    {ghostRuns.length > 0 ? (
-                      <span className="font-mono text-[0.6875rem] tabular-nums opacity-75">
-                        {ghostRuns.length}
-                      </span>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="serial"
-                    onClick={() => handleSelectDockTab("serial")}
-                    className="h-8 gap-1.5 rounded-none px-2.5 text-xs font-medium after:bottom-0"
-                  >
-                    <Terminal aria-hidden="true" className="size-3.5" />
-                    <span>Serial</span>
-                    <span className="font-mono text-[0.6875rem] tabular-nums opacity-75">
-                      {logs.length}
-                    </span>
-                  </TabsTrigger>
-                </TabsList>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-expanded={dockOpen}
-                  aria-label={dockOpen ? "Ciutkan panel bawah" : "Buka panel bawah"}
-                  onClick={handleToggleDock}
-                  className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  {dockOpen ? (
-                    <ChevronDown aria-hidden="true" className="size-4" />
-                  ) : (
-                    <ChevronUp aria-hidden="true" className="size-4" />
-                  )}
-                </Button>
-              </div>
-
-              <div hidden={!dockOpen}>
-                <TabsContent value="lcd" className="mt-0">
-                  <LcdMirror latest={latestSample} />
-                </TabsContent>
-                <TabsContent value="autotune" className="mt-0">
-                  <AutoTunePanel
-                    hydrated={isHydrated}
-                    connected={connected}
-                    isIdentifying={isIdentifying}
-                    identifyProgressPct={identifyProgressPct}
-                    model={fopdtModel}
-                    candidates={autoTuneCandidates}
-                    showModelOverlay={showFopdtOverlay}
-                    onStartIdentify={handleStartIdentify}
-                    onCancelIdentify={handleCancelIdentify}
-                    onToggleModelOverlay={handleToggleModelOverlay}
-                    onApplyCandidate={handleApplyAutoTune}
-                  />
-                </TabsContent>
-                <TabsContent value="compare" className="mt-0">
-                  <ComparePanel
-                    runs={ghostRuns}
-                    canPinCurrent={metrics.hasStep}
-                    onPinCurrent={handlePinRun}
-                    onToggleRunVisible={handleToggleRunVisible}
-                    onRemoveRun={handleRemoveRun}
-                    onClearAll={handleClearRuns}
-                  />
-                </TabsContent>
-                <TabsContent value="serial" className="mt-0">
-                  <SerialConsole
-                    hydrated={isHydrated}
-                    logs={logs}
-                    connected={connected}
-                    onSendRaw={sendRawCommand}
-                    onClearLogs={handleClearLogs}
-                    onTelemetryVisibilityChange={handleTelemetryVisibilityChange}
-                  />
-                </TabsContent>
-              </div>
-            </Tabs>
-          </section>
+          {activeView === "dashboard" ? (
+            <PhoenixBentoRow
+              hydrated={isHydrated}
+              connected={connected}
+              connectionMode={connectionMode}
+              activeMode={activeMode}
+              latest={latestSample}
+              metrics={metrics}
+              advancedConfig={advancedConfig}
+              onUpdateAdvancedConfig={handleUpdateAdvancedConfig}
+              onInjectDisturbance={
+                connectionMode === "simulator" ? handleInjectDisturbance : undefined
+              }
+              onInjectVoltageSag={
+                connectionMode === "simulator" ? handleInjectVoltageSag : undefined
+              }
+              onInjectStallTest={
+                connectionMode === "simulator" ? handleInjectStallTest : undefined
+              }
+              onSync={() => handleCommand("SYNC")}
+            />
+          ) : activeView === "autotune" ? (
+            <div className="phoenix-card shrink-0 overflow-hidden rounded-xl">
+              <AutoTunePanel
+                hydrated={isHydrated}
+                connected={connected}
+                isIdentifying={isIdentifying}
+                identifyProgressPct={identifyProgressPct}
+                model={fopdtModel}
+                candidates={autoTuneCandidates}
+                showModelOverlay={showFopdtOverlay}
+                onStartIdentify={handleStartIdentify}
+                onCancelIdentify={handleCancelIdentify}
+                onToggleModelOverlay={handleToggleModelOverlay}
+                onApplyCandidate={handleApplyAutoTune}
+              />
+            </div>
+          ) : activeView === "compare" ? (
+            <div className="phoenix-card shrink-0 overflow-hidden rounded-xl">
+              <ComparePanel
+                runs={ghostRuns}
+                canPinCurrent={metrics.hasStep}
+                onPinCurrent={handlePinRun}
+                onToggleRunVisible={handleToggleRunVisible}
+                onRemoveRun={handleRemoveRun}
+                onClearAll={handleClearRuns}
+              />
+            </div>
+          ) : (
+            <div className="phoenix-card shrink-0 overflow-hidden rounded-xl">
+              <SerialConsole
+                hydrated={isHydrated}
+                logs={logs}
+                connected={connected}
+                onSendRaw={sendRawCommand}
+                onClearLogs={handleClearLogs}
+                onTelemetryVisibilityChange={handleTelemetryVisibilityChange}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Right Control Sidebar */}
+        {/* Right Bento Column (~32%): Drive Control Power Dial + 180° Arc Gauge & PID Gains */}
         <ControlPanel
           hydrated={isHydrated}
           connected={connected}
-          connectionMode={connectionMode}
+          latestSample={latestSample}
           activeMode={activeMode}
           runState={runState}
           activePid={activePid}
@@ -1285,15 +1198,6 @@ export function DashboardWorkspace() {
           onCommand={handleCommand}
           onApplyPpr={handleApplyPpr}
           onUpdateAdvancedConfig={handleUpdateAdvancedConfig}
-          onInjectDisturbance={
-            connectionMode === "simulator" ? handleInjectDisturbance : undefined
-          }
-          onInjectVoltageSag={
-            connectionMode === "simulator" ? handleInjectVoltageSag : undefined
-          }
-          onInjectStallTest={
-            connectionMode === "simulator" ? handleInjectStallTest : undefined
-          }
         />
       </main>
     </TooltipProvider>

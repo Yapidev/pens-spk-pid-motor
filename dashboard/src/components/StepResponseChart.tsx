@@ -24,6 +24,7 @@ import type {
 interface StepResponseChartProps {
   samplesRef: React.RefObject<TelemetrySample[]>;
   telemetryVersionRef: React.RefObject<number>;
+  latestSample?: TelemetrySample | null;
   metrics: StepMetrics;
   ghostRuns: SavedRunSnapshot[];
   fopdtModel: FopdtModel | null;
@@ -241,6 +242,7 @@ function computeDomains(
 export const StepResponseChart = React.memo(function StepResponseChart({
   samplesRef,
   telemetryVersionRef,
+  latestSample,
   metrics,
   ghostRuns,
   fopdtModel,
@@ -1005,34 +1007,71 @@ export const StepResponseChart = React.memo(function StepResponseChart({
     ? `Grafik respon step dari ${metrics.initialRpm.toFixed(0)} ke ${metrics.targetSetpoint.toFixed(0)} RPM. Rise time ${metrics.riseTimeSec != null ? metrics.riseTimeSec.toFixed(2) + " detik" : "belum tercapai"}, overshoot ${metrics.overshootPct != null ? metrics.overshootPct.toFixed(1) + "%" : "belum terukur"}, settling time ${metrics.settlingTimeSec != null ? metrics.settlingTimeSec.toFixed(2) + " detik" : "belum stabil"}.`
     : "Grafik osiloskop real-time perbandingan Setpoint dan Actual RPM motor DC 24V beserta PWM, error, arus, dan overlay referensi.";
 
+  const liveRpm = latestSample?.rpm ?? 0;
+  const liveSp = latestSample?.setpoint ?? 0;
+  const liveErr = latestSample?.error ?? 0;
+  const inBand = Math.abs(liveSp) > 1 && Math.abs(liveErr) <= Math.max(2, Math.abs(liveSp) * 0.02);
+
   return (
     <section
       aria-labelledby="oscilloscope-heading"
-      className="panel-isolated flex min-h-[340px] flex-1 flex-col bg-[var(--chart-bg)]"
+      className="phoenix-card panel-isolated flex min-h-[340px] flex-1 flex-col overflow-hidden rounded-xl"
     >
-      {/* Quiet Single-Line Oscilloscope Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3.5 py-1.5">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+      {/* Modern Clean Hero Header: Title + Inline Tabular KPIs + Unified Toolbar */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-[var(--bg-surface)] px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-4">
           <h2
             id="oscilloscope-heading"
-            className="text-xs font-semibold text-foreground"
+            className="text-xs font-semibold tracking-tight text-foreground"
           >
-            Osiloskop
+            Step Response
           </h2>
-          <span className="inline-flex items-center gap-1.5 text-[var(--ink-secondary)]">
-            <span
-              aria-hidden="true"
-              className="inline-block h-0.5 w-3 border-t-2 border-dashed border-[var(--accent-sp-bright)]"
-            />
-            SP
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-[var(--ink-secondary)]">
-            <span
-              aria-hidden="true"
-              className="inline-block h-0.5 w-3 bg-[var(--accent-rpm)]"
-            />
-            RPM
-          </span>
+
+          <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+
+          {/* Clean Borderless Tabular Telemetry Strip (no pill clutter, no dots) */}
+          <div className="flex flex-wrap items-center gap-4 font-mono text-xs tabular-nums">
+            <div className="flex items-baseline gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-0.5 w-3 self-center bg-[var(--accent-rpm)]"
+              />
+              <span className="font-sans text-[0.6875rem] text-muted-foreground">
+                RPM
+              </span>
+              <span className="text-sm font-semibold text-foreground">
+                {liveRpm.toFixed(1)}
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-0.5 w-3 self-center border-t-2 border-dashed border-[var(--accent-sp-bright)]"
+              />
+              <span className="font-sans text-[0.6875rem] text-muted-foreground">
+                SP
+              </span>
+              <span className="text-sm font-semibold text-[var(--accent-sp)]">
+                {liveSp.toFixed(0)}
+              </span>
+            </div>
+
+            <div className="hidden items-baseline gap-1.5 sm:flex">
+              <span className="font-sans text-[0.6875rem] text-muted-foreground">
+                Error
+              </span>
+              <span
+                className={cn(
+                  "text-sm font-semibold",
+                  inBand ? "text-[var(--accent-ok)]" : "text-foreground"
+                )}
+              >
+                {liveErr >= 0 ? `+${liveErr.toFixed(1)}` : liveErr.toFixed(1)}
+              </span>
+            </div>
+          </div>
+
           <Button
             type="button"
             variant="ghost"
@@ -1040,7 +1079,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
             aria-pressed={showBand}
             onClick={() => setShowBand((v) => !v)}
             className={cn(
-              "h-7 gap-1.5 rounded-sm px-1.5 text-xs font-normal",
+              "h-7 gap-1.5 rounded-lg px-2 text-xs font-normal",
               showBand
                 ? "text-[var(--accent-ok)] hover:bg-[var(--accent-ok-bg)] hover:text-[var(--accent-ok)]"
                 : "text-muted-foreground line-through hover:text-foreground"
@@ -1048,7 +1087,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
           >
             <span
               aria-hidden="true"
-              className="inline-block size-2 border border-[var(--accent-ok-border)] bg-[var(--accent-ok-bg)]"
+              className="inline-block size-2 rounded-xs border border-[var(--accent-ok-border)] bg-[var(--accent-ok-bg)]"
             />
             ±2%
           </Button>
@@ -1060,11 +1099,11 @@ export const StepResponseChart = React.memo(function StepResponseChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* Sub-trace selector (semantic radiogroup — zero dangling aria-controls) */}
+          {/* Sub-trace selector */}
           <div
             role="radiogroup"
             aria-label="Sub-grafik bawah"
-            className="inline-flex h-7 items-center rounded-sm border border-border bg-muted p-0.5 font-mono text-[0.6875rem]"
+            className="inline-flex h-7 items-center rounded-lg border border-border bg-[var(--bg-canvas)] p-0.5 font-mono text-[0.6875rem]"
           >
             {(
               [
@@ -1082,9 +1121,9 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                   aria-checked={active}
                   onClick={() => setSubTrace(key)}
                   className={cn(
-                    "inline-flex h-full items-center justify-center rounded-[2px] px-2 whitespace-nowrap transition-colors",
+                    "inline-flex h-full items-center justify-center rounded-md px-2 whitespace-nowrap transition-colors",
                     active
-                      ? "bg-card font-semibold text-foreground shadow-2xs"
+                      ? "bg-[var(--bg-subtle)] font-semibold text-foreground"
                       : "text-[var(--ink-secondary)] hover:text-foreground"
                   )}
                 >
@@ -1094,11 +1133,11 @@ export const StepResponseChart = React.memo(function StepResponseChart({
             })}
           </div>
 
-          {/* Timebase window (semantic radiogroup with fixed widths to prevent font-swap CLS) */}
+          {/* Timebase window */}
           <div
             role="radiogroup"
             aria-label="Jendela waktu"
-            className="inline-flex h-7 items-center rounded-sm border border-border bg-muted p-0.5 font-mono text-[0.6875rem]"
+            className="inline-flex h-7 items-center rounded-lg border border-border bg-[var(--bg-canvas)] p-0.5 font-mono text-[0.6875rem]"
           >
             {([10, 20, 30, 60, 0] as TimeWindow[]).map((w) => {
               const active = timeWindow === w;
@@ -1110,9 +1149,9 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                   aria-checked={active}
                   onClick={() => setTimeWindow(w)}
                   className={cn(
-                    "inline-flex h-full w-8 items-center justify-center rounded-[2px] whitespace-nowrap transition-colors",
+                    "inline-flex h-full w-8 items-center justify-center rounded-md whitespace-nowrap transition-colors",
                     active
-                      ? "bg-card font-semibold text-foreground shadow-2xs"
+                      ? "bg-[var(--bg-subtle)] font-semibold text-foreground"
                       : "text-[var(--ink-secondary)] hover:text-foreground"
                   )}
                 >
@@ -1130,7 +1169,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                 size="xs"
                 disabled={!metrics.hasStep}
                 onClick={onPinRun}
-                className="h-7 gap-1 rounded-sm border-input bg-card px-2 text-xs font-medium text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
+                className="h-7 gap-1 rounded-lg border-input bg-[var(--bg-canvas)] px-2 text-xs font-medium text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-[var(--bg-canvas)]"
               >
                 <Pin aria-hidden="true" className="size-3" />
                 <span>Pin</span>
@@ -1147,10 +1186,10 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                 size="xs"
                 onClick={toggleFreeze}
                 className={cn(
-                  "h-7 gap-1 rounded-sm px-2 text-xs font-medium shadow-none",
+                  "h-7 gap-1 rounded-lg px-2 text-xs font-medium shadow-none",
                   isFrozen
                     ? "border-[var(--accent-warn-border)] bg-[var(--accent-warn-bg)] text-[var(--accent-warn)] hover:bg-[var(--accent-warn-bg-hover)] hover:text-[var(--accent-warn)] dark:border-[var(--accent-warn-border)] dark:bg-[var(--accent-warn-bg)]"
-                    : "border-input bg-card text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
+                    : "border-input bg-[var(--bg-canvas)] text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-foreground dark:bg-[var(--bg-canvas)]"
                 )}
               >
                 {isFrozen ? (
@@ -1178,7 +1217,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                   needsRedrawRef.current = true;
                 }}
                 aria-label="Bersihkan grafik"
-                className="size-7 rounded-sm border-input bg-card text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-card"
+                className="size-7 rounded-lg border-input bg-[var(--bg-canvas)] text-[var(--ink-secondary)] shadow-none hover:border-[var(--border-strong)] hover:text-foreground dark:bg-[var(--bg-canvas)]"
               >
                 <RotateCcw aria-hidden="true" className="size-3.5" />
               </Button>
@@ -1193,7 +1232,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                 variant="outline"
                 size="xs"
                 onClick={handleExportPng}
-                className="h-7 gap-1 rounded-sm border-input bg-card px-2 text-xs font-medium text-foreground shadow-none hover:border-[var(--border-strong)] dark:bg-card"
+                className="h-7 gap-1 rounded-lg border-input bg-[var(--bg-canvas)] px-2 text-xs font-medium text-foreground shadow-none hover:border-[var(--border-strong)] dark:bg-[var(--bg-canvas)]"
               >
                 <Camera aria-hidden="true" className="size-3" />
                 <span>PNG</span>
@@ -1222,7 +1261,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
               <div className="mb-1 flex items-center justify-between gap-4 border-b border-[var(--border-hairline)] pb-0.5 text-[var(--ink-muted)]">
                 <span>t = {hoveredSample.elapsedSec.toFixed(2)}s</span>
                 <span>
-                  {hoveredSample.voltage.toFixed(1)}V · {hoveredSample.currentAmp.toFixed(2)}A
+                  {hoveredSample.voltage.toFixed(1)} V / {hoveredSample.currentAmp.toFixed(2)} A
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">

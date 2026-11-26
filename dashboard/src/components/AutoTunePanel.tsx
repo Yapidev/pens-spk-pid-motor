@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useId, useState } from "react";
-import { Activity, Eye, EyeOff, Sparkles, Square } from "lucide-react";
+import { Activity, Eye, EyeOff, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,25 +181,27 @@ export const AutoTunePanel = React.memo(function AutoTunePanel({
           {candidates.map((c) => (
             <div
               key={c.id}
-              className="flex flex-col justify-between gap-1.5 rounded-sm border border-border bg-[var(--bg-surface-alt)] px-2.5 py-1.5"
+              className="flex flex-col justify-between gap-2 rounded-lg border border-border bg-[var(--bg-surface-alt)] px-3 py-2"
             >
               <div className="flex items-baseline justify-between gap-1">
                 <span className="text-xs font-semibold text-foreground">{c.name}</span>
-                <span className="truncate text-[0.625rem] text-muted-foreground">
+                <span className="truncate text-[0.6875rem] text-muted-foreground">
                   {c.tag}
                 </span>
               </div>
-              <div className="font-mono text-[0.6875rem] tabular-nums text-[var(--ink-secondary)]">
-                P:{c.kp.toFixed(2)} · I:{c.ki.toFixed(2)} · D:{c.kd.toFixed(3)}
+              <div className="flex items-center gap-3 font-mono text-[0.6875rem] tabular-nums text-[var(--ink-secondary)]">
+                <span>Kp {c.kp.toFixed(2)}</span>
+                <span>Ki {c.ki.toFixed(2)}</span>
+                <span>Kd {c.kd.toFixed(3)}</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <Button
                   type="button"
                   variant="outline"
                   size="xs"
                   disabled={isDisabled || isIdentifying}
                   onClick={() => onApplyCandidate(c, false)}
-                  className="h-6 flex-1 rounded-sm border-input bg-card px-1.5 text-[0.6875rem] shadow-none dark:bg-card"
+                  className="h-7 flex-1 rounded-lg border-input bg-card px-2 text-xs shadow-none dark:bg-card"
                 >
                   Pakai PID
                 </Button>
@@ -210,9 +212,8 @@ export const AutoTunePanel = React.memo(function AutoTunePanel({
                   disabled={isDisabled || isIdentifying}
                   onClick={() => onApplyCandidate(c, true)}
                   title={`Terapkan PID + Feedforward Kff=${c.recommendedKff.toFixed(2)}`}
-                  className="h-6 flex-1 gap-1 rounded-sm px-1.5 text-[0.6875rem] shadow-none"
+                  className="h-7 flex-1 rounded-lg px-2 text-xs font-semibold shadow-none"
                 >
-                  <Sparkles aria-hidden="true" className="size-2.5" />
                   <span>+ 2-DOF</span>
                 </Button>
               </div>

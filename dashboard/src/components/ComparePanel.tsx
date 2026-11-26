@@ -87,10 +87,10 @@ export const ComparePanel = React.memo(function ComparePanel({
               {runs.map((run) => (
                 <tr key={run.id} className="text-[0.6875rem]">
                   <td className="py-1 pr-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <span
                         aria-hidden="true"
-                        className="inline-block size-2.5 rounded-full"
+                        className="inline-block h-3.5 w-1 rounded-xs"
                         style={{ backgroundColor: run.color }}
                       />
                       <Switch

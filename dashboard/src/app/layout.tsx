@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     "Real-Time PID Controller Telemetry & Tuning Dashboard untuk Modul Praktikum Sistem Pengaturan Komputer (PENS)",
 };
 
-// Blocking FOUC-prevention script: syncs stored override to <meta name="color-scheme"> before first paint
+// Blocking FOUC-prevention script: defaults to Phoenix dark mode, honors stored light/dark override before first paint
 const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark"){var m=document.querySelector('meta[name="color-scheme"]');if(m)m.content=s;}}catch(e){}})();`;
 
 export default function RootLayout({
@@ -37,7 +37,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <meta name="color-scheme" content="light dark" />
+        <meta name="color-scheme" content="dark" />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body

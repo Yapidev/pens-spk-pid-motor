@@ -81,7 +81,7 @@ export function getResolvedColorScheme(): ResolvedColorScheme {
   if (metaContent === "dark" || metaContent === "light") {
     return metaContent;
   }
-  return getStoredColorScheme() ?? getSystemColorScheme();
+  return getStoredColorScheme() ?? "dark";
 }
 
 export function applyColorSchemeMeta(pref: ColorSchemePreference): void {
@@ -92,10 +92,7 @@ export function applyColorSchemeMeta(pref: ColorSchemePreference): void {
 }
 
 /**
- * Two-state toggle mengikuti spesifikasi modern-web-guidance `dark-mode-toggle`:
- * - Target = lawan dari skema yang sedang dirender sekarang.
- * - Jika target berbeda dari preferensi OS: simpan literal ("light" atau "dark").
- * - Jika target sama dengan preferensi OS: hapus dari localStorage agar kembali mengikuti OS ("light dark").
+ * Two-state toggle dengan Phoenix Dark Mode sebagai default.
  */
 export function toggleColorScheme(): {
   resolved: ResolvedColorScheme;
@@ -103,17 +100,10 @@ export function toggleColorScheme(): {
 } {
   const currentRendered = getResolvedColorScheme();
   const target: ResolvedColorScheme = currentRendered === "dark" ? "light" : "dark";
-  const system = getSystemColorScheme();
 
-  if (target !== system) {
-    applyColorSchemeMeta(target);
-    writeStorageCached(STORAGE_KEY, target);
-    return { resolved: target, followingSystem: false };
-  }
-
-  applyColorSchemeMeta("light dark");
-  removeStorageCached(STORAGE_KEY);
-  return { resolved: target, followingSystem: true };
+  applyColorSchemeMeta(target);
+  writeStorageCached(STORAGE_KEY, target);
+  return { resolved: target, followingSystem: false };
 }
 
 /**

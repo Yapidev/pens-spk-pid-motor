@@ -43,53 +43,58 @@
   color-scheme: light dark;
   --radius: 0.375rem;
 
-  /* Raw light & dark matte instrumentation tokens (Zinc / Slate + Precision Accents) */
-  --bg-canvas-light: #f4f5f7;
-  --bg-canvas-dark: #090b0f;
+  /* Refined modern obsidian dark + crisp editorial light tokens */
+  --bg-canvas-light: #f5f6f8;
+  --bg-canvas-dark: #090a0c;
   --bg-surface-light: #ffffff;
-  --bg-surface-dark: #101319;
+  --bg-surface-dark: #111317;
   --bg-surface-alt-light: #f8f9fb;
-  --bg-surface-alt-dark: #141820;
-  --bg-subtle-light: #f0f2f5;
-  --bg-subtle-dark: #1b202b;
-  --bg-hover-light: #eef0f4;
-  --bg-hover-dark: #202634;
+  --bg-surface-alt-dark: #16191f;
+  --bg-subtle-light: #eef0f4;
+  --bg-subtle-dark: #1c2028;
+  --bg-hover-light: #e6e9ef;
+  --bg-hover-dark: #232833;
 
-  --border-hairline-light: #e4e6ec;
-  --border-hairline-dark: #232836;
-  --border-control-light: #d2d6e0;
-  --border-control-dark: #303748;
+  --border-hairline-light: #e5e7ec;
+  --border-hairline-dark: rgba(255, 255, 255, 0.075);
+  --border-control-light: #d1d5df;
+  --border-control-dark: rgba(255, 255, 255, 0.13);
   --border-strong-light: #181c24;
-  --border-strong-dark: #e2e8f0;
+  --border-strong-dark: rgba(255, 255, 255, 0.28);
 
-  --ink-primary-light: #11151d;
-  --ink-primary-dark: #eef2f8;
-  --ink-secondary-light: #3d4656;
-  --ink-secondary-dark: #b6c0d0;
-  --ink-muted-light: #5f697a;
-  --ink-muted-dark: #94a3b8;
+  --ink-primary-light: #0f1218;
+  --ink-primary-dark: #f4f5f7;
+  --ink-secondary-light: #434b5c;
+  --ink-secondary-dark: #a6afbe;
+  --ink-muted-light: #646e80;
+  --ink-muted-dark: #858f9f;
 
-  --btn-primary-bg-light: #181b22;
-  --btn-primary-bg-dark: #edf1f7;
-  --btn-primary-hover-light: #2b313e;
-  --btn-primary-hover-dark: #ffffff;
+  --btn-primary-bg-light: #c2410c;
+  --btn-primary-bg-dark: #ff621f;
+  --btn-primary-hover-light: #9a3412;
+  --btn-primary-hover-dark: #ff783d;
   --btn-primary-ink-light: #ffffff;
-  --btn-primary-ink-dark: #0e1117;
+  --btn-primary-ink-dark: #090a0c;
 
-  /* Disciplined Salience Budget */
+  /* Single disciplined fiery-orange accent + semantic telemetry colors */
+  --accent-phoenix-light: #d94800;
+  --accent-phoenix-dark: #ff5c1a;
+  --accent-phoenix-soft-light: rgba(217, 72, 0, 0.10);
+  --accent-phoenix-soft-dark: rgba(255, 92, 26, 0.14);
+
   --accent-sp-light: #c2410c;
-  --accent-sp-dark: #fb923c;
+  --accent-sp-dark: #ff6e30;
   --accent-sp-bright-light: #ea580c;
-  --accent-sp-bright-dark: #fb923c;
+  --accent-sp-bright-dark: #ff5c1a;
   --accent-sp-bg-light: rgba(234, 88, 12, 0.08);
-  --accent-sp-bg-dark: rgba(251, 146, 60, 0.14);
+  --accent-sp-bg-dark: rgba(255, 92, 26, 0.13);
   --accent-sp-bg-hover-light: rgba(234, 88, 12, 0.14);
-  --accent-sp-bg-hover-dark: rgba(251, 146, 60, 0.22);
+  --accent-sp-bg-hover-dark: rgba(255, 92, 26, 0.20);
 
-  --accent-rpm-light: #1d4ed8;
-  --accent-rpm-dark: #60a5fa;
-  --accent-rpm-bg-light: rgba(29, 78, 216, 0.08);
-  --accent-rpm-bg-dark: rgba(96, 165, 250, 0.14);
+  --accent-rpm-light: #0284c7;
+  --accent-rpm-dark: #38bdf8;
+  --accent-rpm-bg-light: rgba(2, 132, 199, 0.08);
+  --accent-rpm-bg-dark: rgba(56, 189, 248, 0.13);
 
   --accent-ok-light: #047857;
   --accent-ok-dark: #34d399;
@@ -125,13 +130,13 @@
 
   /* Oscilloscope Canvas Tokens */
   --chart-bg-light: #ffffff;
-  --chart-bg-dark: #0e1117;
+  --chart-bg-dark: #111318;
   --chart-plot-bg-light: #fafbfc;
-  --chart-plot-bg-dark: #090b10;
+  --chart-plot-bg-dark: #0d0f13;
   --chart-grid-light: #eceff4;
-  --chart-grid-dark: #191e29;
+  --chart-grid-dark: rgba(255, 255, 255, 0.06);
   --chart-axis-light: #d2d7e0;
-  --chart-axis-dark: #2a3140;
+  --chart-axis-dark: rgba(255, 255, 255, 0.14);
   --chart-pwm-stroke-light: #334155;
   --chart-pwm-stroke-dark: #cbd5e1;
   --chart-pwm-fill-light: rgba(51, 65, 85, 0.08);
@@ -163,6 +168,8 @@
   --btn-primary-bg: var(--btn-primary-bg-light);
   --btn-primary-hover: var(--btn-primary-hover-light);
   --btn-primary-ink: var(--btn-primary-ink-light);
+  --accent-phoenix: var(--accent-phoenix-light);
+  --accent-phoenix-soft: var(--accent-phoenix-soft-light);
   --accent-sp: var(--accent-sp-light);
   --accent-sp-bright: var(--accent-sp-bright-light);
   --accent-sp-bg: var(--accent-sp-bg-light);
@@ -213,6 +220,8 @@
     --btn-primary-bg: var(--btn-primary-bg-dark);
     --btn-primary-hover: var(--btn-primary-hover-dark);
     --btn-primary-ink: var(--btn-primary-ink-dark);
+    --accent-phoenix: var(--accent-phoenix-dark);
+    --accent-phoenix-soft: var(--accent-phoenix-soft-dark);
     --accent-sp: var(--accent-sp-dark);
     --accent-sp-bright: var(--accent-sp-bright-dark);
     --accent-sp-bg: var(--accent-sp-bg-dark);
@@ -261,6 +270,8 @@
     --btn-primary-bg: light-dark(var(--btn-primary-bg-light), var(--btn-primary-bg-dark));
     --btn-primary-hover: light-dark(var(--btn-primary-hover-light), var(--btn-primary-hover-dark));
     --btn-primary-ink: light-dark(var(--btn-primary-ink-light), var(--btn-primary-ink-dark));
+    --accent-phoenix: light-dark(var(--accent-phoenix-light), var(--accent-phoenix-dark));
+    --accent-phoenix-soft: light-dark(var(--accent-phoenix-soft-light), var(--accent-phoenix-soft-dark));
     --accent-sp: light-dark(var(--accent-sp-light), var(--accent-sp-dark));
     --accent-sp-bright: light-dark(var(--accent-sp-bright-light), var(--accent-sp-bright-dark));
     --accent-sp-bg: light-dark(var(--accent-sp-bg-light), var(--accent-sp-bg-dark));
@@ -424,12 +435,32 @@
   contain: layout style paint;
 }
 
-/* Authentic 16x2 LCD subtle pixel matrix */
+/* Clean 16x2 LCD matte panel (no decorative dot noise) */
 .lcd-matrix {
   color-scheme: dark;
-  background-color: #0d1d13;
-  background-image: radial-gradient(rgba(134, 239, 172, 0.08) 1px, transparent 0);
-  background-size: 4px 4px;
+  background-color: #0b140e;
+}
+
+/* Refined Modern Surface Card (clean matte elevation, zero neon glow) */
+.phoenix-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) .phoenix-card {
+  background-color: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.phoenix-power-ring {
+  background-color: var(--bg-surface-alt);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.phoenix-power-ring[data-active="true"] {
+  border-color: var(--accent-phoenix);
+  background-color: var(--accent-phoenix-soft);
 }
 
 @media (forced-colors: active) {

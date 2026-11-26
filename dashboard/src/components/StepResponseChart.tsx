@@ -258,7 +258,11 @@ export const StepResponseChart = React.memo(function StepResponseChart({
   const [subTrace, setSubTrace] = useState<SubTraceMode>("pwm");
   const [showBand, setShowBand] = useState(true);
   const [isFrozen, setIsFrozen] = useState(false);
-  const [hoveredSample, setHoveredSample] = useState<TelemetrySample | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{
+    sample: TelemetrySample;
+    x: number;
+    y: number;
+  } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 420 });
 
   const frozenSamplesRef = useRef<TelemetrySample[]>([]);
@@ -909,12 +913,13 @@ export const StepResponseChart = React.memo(function StepResponseChart({
 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     const { padLeft, plotW } = layoutRef.current;
     if (x < padLeft || x > padLeft + plotW) {
       if (hoverIdxRef.current !== null) {
         hoverIdxRef.current = null;
         needsRedrawRef.current = true;
-        setHoveredSample(null);
+        setHoverInfo(null);
       }
       return;
     }
@@ -943,18 +948,27 @@ export const StepResponseChart = React.memo(function StepResponseChart({
       lo = lo - 1;
     }
 
+    const tooltipW = 212;
+    const tooltipH = 74;
+    const offset = 14;
+    const flipLeft = x + offset + tooltipW > rect.width - 8;
+    const tx = flipLeft
+      ? Math.max(padLeft + 6, x - tooltipW - offset)
+      : Math.min(rect.width - tooltipW - 8, x + offset);
+    const ty = Math.max(10, Math.min(rect.height - tooltipH - 12, y - tooltipH / 2));
+
     if (hoverIdxRef.current !== lo) {
       hoverIdxRef.current = lo;
       needsRedrawRef.current = true;
-      setHoveredSample(source[lo]);
     }
+    setHoverInfo({ sample: source[lo], x: tx, y: ty });
   };
 
   const handleMouseLeave = () => {
     if (hoverIdxRef.current !== null) {
       hoverIdxRef.current = null;
       needsRedrawRef.current = true;
-      setHoveredSample(null);
+      setHoverInfo(null);
     }
   };
 
@@ -1211,7 +1225,7 @@ export const StepResponseChart = React.memo(function StepResponseChart({
                 size="icon-xs"
                 onClick={() => {
                   hoverIdxRef.current = null;
-                  setHoveredSample(null);
+                  setHoverInfo(null);
                   if (isFrozenRef.current) frozenSamplesRef.current = [];
                   onClearPlot();
                   needsRedrawRef.current = true;
@@ -1256,29 +1270,35 @@ export const StepResponseChart = React.memo(function StepResponseChart({
             className="block max-w-full cursor-crosshair"
           />
 
-          {hoveredSample ? (
-            <div className="pointer-events-none absolute right-3 top-2 rounded-sm border border-[var(--border-control)] bg-[var(--bg-surface)]/95 px-2.5 py-1.5 font-mono text-[0.6875rem] tabular-nums shadow-sm">
-              <div className="mb-1 flex items-center justify-between gap-4 border-b border-[var(--border-hairline)] pb-0.5 text-[var(--ink-muted)]">
-                <span>t = {hoveredSample.elapsedSec.toFixed(2)}s</span>
+          {hoverInfo ? (
+            <div
+              style={{
+                transform: `translate3d(${hoverInfo.x}px, ${hoverInfo.y}px, 0)`,
+              }}
+              className="pointer-events-none absolute left-0 top-0 w-[212px] rounded-lg border border-[var(--border-control)] bg-[var(--bg-surface)]/95 px-2.5 py-2 font-mono text-[0.6875rem] tabular-nums shadow-md backdrop-blur-xs will-change-transform"
+            >
+              <div className="mb-1 flex items-center justify-between gap-2 border-b border-[var(--border-hairline)] pb-1 text-[var(--ink-muted)]">
+                <span>t = {hoverInfo.sample.elapsedSec.toFixed(2)}s</span>
                 <span>
-                  {hoveredSample.voltage.toFixed(1)} V / {hoveredSample.currentAmp.toFixed(2)} A
+                  {hoverInfo.sample.voltage.toFixed(1)} V /{" "}
+                  {hoverInfo.sample.currentAmp.toFixed(2)} A
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                 <span className="text-[var(--accent-sp)]">
-                  SP {hoveredSample.setpoint.toFixed(1)}
+                  SP {hoverInfo.sample.setpoint.toFixed(1)}
                 </span>
                 <span className="text-[var(--accent-rpm)]">
-                  RPM {hoveredSample.rpm.toFixed(1)}
+                  RPM {hoverInfo.sample.rpm.toFixed(1)}
                 </span>
                 <span className="text-[var(--ink-secondary)]">
-                  Err {hoveredSample.error >= 0 ? "+" : ""}
-                  {hoveredSample.error.toFixed(1)}
+                  Err {hoverInfo.sample.error >= 0 ? "+" : ""}
+                  {hoverInfo.sample.error.toFixed(1)}
                 </span>
                 <span className="text-[var(--ink-primary)]">
-                  PWM {hoveredSample.pwm}
-                  {hoveredSample.flags.ffEnabled
-                    ? ` (FF ${hoveredSample.ffPwm.toFixed(0)})`
+                  PWM {hoverInfo.sample.pwm}
+                  {hoverInfo.sample.flags.ffEnabled
+                    ? ` (FF ${hoverInfo.sample.ffPwm.toFixed(0)})`
                     : ""}
                 </span>
               </div>
